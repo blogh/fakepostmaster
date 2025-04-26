@@ -88,23 +88,22 @@ impl BackendMessage {
         Ok(t)
     }
 
-    //TODO: needs test
     fn compose_command_complete(&self, command_tag: &String) -> anyhow::Result<BytesMut> {
         let mut t = BytesMut::new();
 
         // Auth request
         t.put_u8('C' as u8);
         // Length
-        t.put_i32(command_tag.len() as i32 + 4);
+        t.put_i32(command_tag.len() as i32 + 1 + 4);
         // Status of the backend I: idle, T: idle in txn, E: failed in txn block
         // let buf = from_cstring(&self.command_tag)?;
         // t.put_slice(&buf.to_vec()[..]);
+        //FIXME: this shouldn't be a string
         t.put_cstring(command_tag);
 
         Ok(t)
     }
 
-    //TODO: needs test
     fn compose_ready_for_query(&self) -> anyhow::Result<BytesMut> {
         let mut t = BytesMut::new();
 
@@ -280,6 +279,32 @@ mod test_backend {
                 'g' as u8, '1' as u8, '2' as u8, '0' as u8, '+' as u8, '1' as u8, ')' as u8, 0x00
             ]
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_command_complete() -> anyhow::Result<()> {
+        //  0x0060:         43 0000 000d 5345 4c45 4354 2031  ...C....SELECT.1
+        //  0x0070:  00
+        //FIXME: this shouldn't be a string
+        let bm = BackendMessage::CommmandComplete {
+            command_tag: String::from("SELECT 1"),
+        };
+        assert_eq!(
+            bm.compose()?.to_vec(),
+            [
+                0x43, 0x00, 0x00, 0x00, 0x0d, 'S' as u8, 'E' as u8, 'L' as u8, 'E' as u8,
+                'C' as u8, 'T' as u8, ' ' as u8, '1' as u8, 0x00
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_ready_for_query() -> anyhow::Result<()> {
+        //  0x0070:    5a 0000 0005 49                         Z....I
+        let bm = BackendMessage::ReadyForQuery;
+        assert_eq!(bm.compose()?.to_vec(), [0x5a, 0x00, 0x00, 0x00, 0x05, 0x49]);
         Ok(())
     }
 }
