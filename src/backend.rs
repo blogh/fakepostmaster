@@ -21,6 +21,12 @@ pub struct RowDescription {
 }
 
 #[derive(Debug)]
+pub struct RowData {
+    pub length: i32,
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug)]
 pub struct ErrorMessage {
     // Identifier: https://www.postgresql.org/docs/17/protocol-error-fields.html
     pub code: char,
@@ -33,7 +39,7 @@ pub enum BackendMessage {
     AuthenticationMD5Password { salt: [u8; 4] },
     AuthenticationOk,
     CommmandComplete { command_tag: String },
-    DataRow { columns: Vec<String> },
+    DataRow { columns: Vec<RowData> },
     ReadyForQuery,
     RowDescription { columns: Vec<RowDescription> },
     ErrorResponse { messages: Vec<ErrorMessage> },
@@ -118,22 +124,27 @@ impl BackendMessage {
     }
 
     //TODO: needs test
-    fn compose_data_row(&self, columns: &Vec<String>) -> anyhow::Result<BytesMut> {
-        //FIXME: Not tested
+    fn compose_data_row(&self, columns: &Vec<RowData>) -> anyhow::Result<BytesMut> {
+        //FIXME: Horrible mess
         let mut t = BytesMut::new();
+        let mut t2 = BytesMut::new();
+
+        // Number of columns
+        t2.put_i16(i16::try_from(columns.len())?);
+        // Columns
+        for col in columns {
+            // the size of the field: (this count does not include itself). Can be
+            // zero. As a special case, -1 indicates a NULL column value. No value bytes follow in the
+            // NULL case.
+            t2.put_i32(col.length);
+            t2.put_slice(&col.data[..]);
+        }
 
         // Auth request
         t.put_u8('D' as u8);
         // Length
-        t.put_i32(5);
-        // Number of columns
-        t.put_i16(i16::try_from(columns.len())?);
-        // Columns
-        for col in columns {
-            t.put_i32(col.len() as i32);
-            //FIXME: I should encode the type here
-            t.put_cstring(&col);
-        }
+        t.put_i32(t2.len() as i32 + 4);
+        t.extend_from_slice(&t2.to_vec());
 
         Ok(t)
     }
@@ -243,16 +254,6 @@ mod test_backend {
                 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x99
             ]
         );
-
-        // Row Data message
-        // 0x0050:                      4400 0000 0a00 0100  ........D.......
-        // 0x0060:  0000 0043 0000 000d 5345 4c45 4354 2031  ...C....SELECT.1
-        // 0x0070:  005a 0000 0005 49                        .Z....I
-
-        // Command Complete message
-        // 0x0060:         43 0000 000d 5345 4c45 4354 2031     C....SELECT.1
-        // 0x0070:  005a 0000 0005 49                        .Z....I
-        //
         Ok(())
     }
 
@@ -305,6 +306,26 @@ mod test_backend {
         //  0x0070:    5a 0000 0005 49                         Z....I
         let bm = BackendMessage::ReadyForQuery;
         assert_eq!(bm.compose()?.to_vec(), [0x5a, 0x00, 0x00, 0x00, 0x05, 0x49]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_data_row() -> anyhow::Result<()> {
+        // Empty Row Data message
+        // 0x0050:                      4400 0000 0a00 0100  ........D.......
+        // 0x0060:  0000 00
+        let bm = BackendMessage::DataRow {
+            columns: vec![RowData {
+                length: 0,
+                data: Vec::new(),
+            }],
+        };
+        assert_eq!(
+            bm.compose()?.to_vec(),
+            [
+                0x44, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00
+            ]
+        );
         Ok(())
     }
 }

@@ -13,7 +13,7 @@ mod bytes;
 mod frontend;
 mod handler;
 
-use crate::backend::BackendMessage;
+use crate::backend::{BackendMessage, RowData, RowDescription};
 use crate::frontend::FrontendMessage;
 use crate::handler::TcpHandler;
 
@@ -38,13 +38,16 @@ fn main() -> anyhow::Result<()> {
                 fn auth_func() -> bool {
                     true
                 }
+                fn executor(query: String) -> (Vec<RowDescription>, Vec<RowData>, String) {
+                    (Vec::new(), Vec::new(), String::from("SELECT 0"))
+                }
 
                 println!("accepted new connection");
                 let mut handler = TcpHandler::new(stream)?;
                 let _connection_parameters = handler.md5_authentication_handler(&auth_func)?;
 
                 loop {
-                    handler.simple_query_handler()?;
+                    handler.simple_query_handler(&executor)?;
                 }
             }
             Err(e) => {
