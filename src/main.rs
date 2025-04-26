@@ -43,20 +43,9 @@ fn main() -> anyhow::Result<()> {
                 let mut handler = TcpHandler::new(stream)?;
                 let _connection_parameters = handler.md5_authentication_handler(&auth_func)?;
 
-                // Query?
-                let q = FrontendMessage::parse_query(&mut handler.tcp_reader)?;
-                println!("Received: {q:#?}");
-
-                // Tell the client the commadn tag
-                send_message(
-                    &mut handler.tcp_writer,
-                    BackendMessage::CommmandComplete {
-                        command_tag: String::from("SELECT 1"),
-                    },
-                )?;
-
-                // Tell the client he can continue
-                send_message(&mut handler.tcp_writer, BackendMessage::ReadyForQuery)?;
+                loop {
+                    handler.simple_query_handler()?;
+                }
             }
             Err(e) => {
                 println!("error: {}", e);

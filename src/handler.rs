@@ -59,7 +59,6 @@ impl TcpHandler {
         let pm = FrontendMessage::parse_password_message(&mut self.tcp_reader)?;
         println!("Received: {pm:#?}");
 
-        //TODO:Logic to check if the md5 is good
         if auth_function() {
             // Validate the authentication
             send_message(&mut self.tcp_writer, BackendMessage::AuthenticationOk)?;
@@ -92,5 +91,24 @@ impl TcpHandler {
 
             Err(anyhow!("Auth failed"))
         }
+    }
+
+    pub fn simple_query_handler(&mut self) -> anyhow::Result<()> {
+        // Query?
+        let q = FrontendMessage::parse_query(&mut self.tcp_reader)?;
+        println!("Received: {q:#?}");
+
+        // Tell the client the commadn tag
+        send_message(
+            &mut self.tcp_writer,
+            BackendMessage::CommmandComplete {
+                command_tag: String::from("SELECT 1"),
+            },
+        )?;
+
+        // Tell the client he can continue
+        send_message(&mut self.tcp_writer, BackendMessage::ReadyForQuery)?;
+
+        Ok(())
     }
 }
