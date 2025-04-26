@@ -1,0 +1,122 @@
+tcpdump: data link type LINUX_SLL2
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on any, link-type LINUX_SLL2 (Linux cooked v2), snapshot length 262144 bytes
+
+17:40:19.277657 lo    In  IP vmpostgres.48212 > vmpostgres.postgresql: Flags [S], seq 2329930438, win 65495, options [mss 65495,sackOK,TS val 2309656215 ecr 0,nop,wscale 7], length 0
+        0x0000:  4500 003c 34f0 4000 4006 91c8 c0a8 7959  E..<4.@.@.....yY
+        0x0010:  c0a8 7959 bc54 1538 8adf eac6 0000 0000  ..yY.T.8........
+        0x0020:  a002 ffd7 7432 0000 0204 ffd7 0402 080a  ....t2..........
+        0x0030:  89aa 8e97 0000 0000 0103 0307            ............
+17:40:19.277676 lo    In  IP vmpostgres.postgresql > vmpostgres.48212: Flags [S.], seq 2727421679, ack 2329930439, win 65483, options [mss 65495,sackOK,TS val 2309656215 ecr 2309656215,nop,wscale 7], length 0
+        0x0000:  4500 003c 0000 4000 4006 c6b8 c0a8 7959  E..<..@.@.....yY
+        0x0010:  c0a8 7959 1538 bc54 a291 26ef 8adf eac7  ..yY.8.T..&.....
+        0x0020:  a012 ffcb 7432 0000 0204 ffd7 0402 080a  ....t2..........
+        0x0030:  89aa 8e97 89aa 8e97 0103 0307            ............
+17:40:19.277694 lo    In  IP vmpostgres.48212 > vmpostgres.postgresql: Flags [.], ack 1, win 512, options [nop,nop,TS val 2309656215 ecr 2309656215], length 0
+        0x0000:  4500 0034 34f1 4000 4006 91cf c0a8 7959  E..44.@.@.....yY
+        0x0010:  c0a8 7959 bc54 1538 8adf eac7 a291 26f0  ..yY.T.8......&.
+        0x0020:  8010 0200 742a 0000 0101 080a 89aa 8e97  ....t*..........
+        0x0030:  89aa 8e97                                ....
+17:40:19.279199 lo    In  IP vmpostgres.48212 > vmpostgres.postgresql: Flags [P.], seq 1:85, ack 1, win 512, options [nop,nop,TS val 2309656216 ecr 2309656215], length 84
+        0x0000:  4500 0088 34f2 4000 4006 917a c0a8 7959  E...4.@.@..z..yY
+        0x0010:  c0a8 7959 bc54 1538 8adf eac7 a291 26f0  ..yY.T.8......&.
+        0x0020:  8018 0200 747e 0000 0101 080a 89aa 8e98  ....t~..........
+        0x0030:  89aa 8e97 0000 0054 0003 0000 7573 6572  .......T....user
+        0x0040:  0070 6f73 7467 7265 7300 6461 7461 6261  .postgres.databa
+        0x0050:  7365 0070 6f73 7467 7265 7300 6170 706c  se.postgres.appl
+        0x0060:  6963 6174 696f 6e5f 6e61 6d65 0070 7371  ication_name.psq
+        0x0070:  6c00 636c 6965 6e74 5f65 6e63 6f64 696e  l.client_encodin
+        0x0080:  6700 5554 4638 0000                      g.UTF8..
+17:40:19.279214 lo    In  IP vmpostgres.postgresql > vmpostgres.48212: Flags [.], ack 85, win 511, options [nop,nop,TS val 2309656216 ecr 2309656216], length 0
+        0x0000:  4500 0034 7c8f 4000 4006 4a31 c0a8 7959  E..4|.@.@.J1..yY
+        0x0010:  c0a8 7959 1538 bc54 a291 26f0 8adf eb1b  ..yY.8.T..&.....
+        0x0020:  8010 01ff 742a 0000 0101 080a 89aa 8e98  ....t*..........
+        0x0030:  89aa 8e98                                ....
+17:40:19.280194 lo    In  IP vmpostgres.postgresql > vmpostgres.48212: Flags [P.], seq 1:25, ack 85, win 512, options [nop,nop,TS val 2309656217 ecr 2309656216], length 24
+        0x0000:  4500 004c 7c90 4000 4006 4a18 c0a8 7959  E..L|.@.@.J...yY
+        0x0010:  c0a8 7959 1538 bc54 a291 26f0 8adf eb1b  ..yY.8.T..&.....
+        0x0020:  8018 0200 7442 0000 0101 080a 89aa 8e99  ....tB..........
+        0x0030:  89aa 8e98 5200 0000 1700 0000 0a53 4352  ....R........SCR
+        0x0040:  414d 2d53 4841 2d32 3536 0000            AM-SHA-256..
+17:40:19.280222 lo    In  IP vmpostgres.48212 > vmpostgres.postgresql: Flags [.], ack 25, win 512, options [nop,nop,TS val 2309656217 ecr 2309656217], length 0
+        0x0000:  4500 0034 34f3 4000 4006 91cd c0a8 7959  E..44.@.@.....yY
+        0x0010:  c0a8 7959 bc54 1538 8adf eb1b a291 2708  ..yY.T.8......'.
+        0x0020:  8010 0200 742a 0000 0101 080a 89aa 8e99  ....t*..........
+        0x0030:  89aa 8e99                                ....
+17:40:19.282761 lo    In  IP vmpostgres.48212 > vmpostgres.postgresql: Flags [P.], seq 85:140, ack 25, win 512, options [nop,nop,TS val 2309656220 ecr 2309656217], length 55
+        0x0000:  4500 006b 34f4 4000 4006 9195 c0a8 7959  E..k4.@.@.....yY
+        0x0010:  c0a8 7959 bc54 1538 8adf eb1b a291 2708  ..yY.T.8......'.
+        0x0020:  8018 0200 7461 0000 0101 080a 89aa 8e9c  ....ta..........
+        0x0030:  89aa 8e99 7000 0000 3653 4352 414d 2d53  ....p...6SCRAM-S
+        0x0040:  4841 2d32 3536 0000 0000 206e 2c2c 6e3d  HA-256.....n,,n=
+        0x0050:  2c72 3d2f 4144 4845 5a5a 4f6a 6241 654d  ,r=/ADHEZZOjbAeM
+        0x0060:  7047 4464 3136 4650 3166 76              pGDd16FP1fv
+17:40:19.282831 lo    In  IP vmpostgres.postgresql > vmpostgres.48212: Flags [P.], seq 25:118, ack 140, win 512, options [nop,nop,TS val 2309656220 ecr 2309656220], length 93
+        0x0000:  4500 0091 7c91 4000 4006 49d2 c0a8 7959  E...|.@.@.I...yY
+        0x0010:  c0a8 7959 1538 bc54 a291 2708 8adf eb52  ..yY.8.T..'....R
+        0x0020:  8018 0200 7487 0000 0101 080a 89aa 8e9c  ....t...........
+        0x0030:  89aa 8e9c 5200 0000 5c00 0000 0b72 3d2f  ....R...\....r=/
+        0x0040:  4144 4845 5a5a 4f6a 6241 654d 7047 4464  ADHEZZOjbAeMpGDd
+        0x0050:  3136 4650 3166 7646 4b4a 7a4d 3539 4a54  16FP1fvFKJzM59JT
+        0x0060:  6e48 4975 7150 5541 7379 7179 7055 342c  nHIuqPUAsyqypU4,
+        0x0070:  733d 7936 6d34 6433 4f36 5549 3479 654a  s=y6m4d3O6UI4yeJ
+        0x0080:  7349 3432 504e 4167 3d3d 2c69 3d34 3039  sI42PNAg==,i=409
+        0x0090:  36                                       6
+17:40:19.290069 lo    In  IP vmpostgres.48212 > vmpostgres.postgresql: Flags [P.], seq 140:249, ack 118, win 512, options [nop,nop,TS val 2309656227 ecr 2309656220], length 109
+        0x0000:  4500 00a1 34f5 4000 4006 915e c0a8 7959  E...4.@.@..^..yY
+        0x0010:  c0a8 7959 bc54 1538 8adf eb52 a291 2765  ..yY.T.8...R..'e
+        0x0020:  8018 0200 7497 0000 0101 080a 89aa 8ea3  ....t...........
+        0x0030:  89aa 8e9c 7000 0000 6c63 3d62 6977 732c  ....p...lc=biws,
+        0x0040:  723d 2f41 4448 455a 5a4f 6a62 4165 4d70  r=/ADHEZZOjbAeMp
+        0x0050:  4744 6431 3646 5031 6676 464b 4a7a 4d35  GDd16FP1fvFKJzM5
+        0x0060:  394a 546e 4849 7571 5055 4173 7971 7970  9JTnHIuqPUAsyqyp
+        0x0070:  5534 2c70 3d2f 6b56 654b 7146 414a 446e  U4,p=/kVeKqFAJDn
+        0x0080:  4933 6e75 6643 7034 6b2f 6938 6738 4a76  I3nufCp4k/i8g8Jv
+        0x0090:  374d 7442 6941 4e33 2b6d 4556 6b4e 4338  7MtBiAN3+mEVkNC8
+        0x00a0:  3d                                       =
+17:40:19.291510 lo    In  IP vmpostgres.postgresql > vmpostgres.48212: Flags [P.], seq 118:589, ack 249, win 512, options [nop,nop,TS val 2309656229 ecr 2309656227], length 471
+        0x0000:  4500 020b 7c92 4000 4006 4857 c0a8 7959  E...|.@.@.HW..yY
+        0x0010:  c0a8 7959 1538 bc54 a291 2765 8adf ebbf  ..yY.8.T..'e....
+        0x0020:  8018 0200 7601 0000 0101 080a 89aa 8ea5  ....v...........
+        0x0030:  89aa 8ea3 5200 0000 3600 0000 0c76 3d57  ....R...6....v=W
+        0x0040:  5a4b 6d77 2f68 2b41 686d 692b 6651 6c62  ZKmw/h+Ahmi+fQlb
+        0x0050:  5639 4f45 6145 5a35 592f 6272 3965 6774  V9OEaEZ5Y/br9egt
+        0x0060:  4c45 4d65 3045 457a 4149 3d52 0000 0008  LEMe0EEzAI=R....
+        0x0070:  0000 0000 5300 0000 1a61 7070 6c69 6361  ....S....applica
+        0x0080:  7469 6f6e 5f6e 616d 6500 7073 716c 0053  tion_name.psql.S
+        0x0090:  0000 0019 636c 6965 6e74 5f65 6e63 6f64  ....client_encod
+        0x00a0:  696e 6700 5554 4638 0053 0000 0017 4461  ing.UTF8.S....Da
+        0x00b0:  7465 5374 796c 6500 4953 4f2c 204d 4459  teStyle.ISO,.MDY
+        0x00c0:  0053 0000 0026 6465 6661 756c 745f 7472  .S...&default_tr
+        0x00d0:  616e 7361 6374 696f 6e5f 7265 6164 5f6f  ansaction_read_o
+        0x00e0:  6e6c 7900 6f66 6600 5300 0000 1769 6e5f  nly.off.S....in_
+        0x00f0:  686f 745f 7374 616e 6462 7900 6f66 6600  hot_standby.off.
+        0x0100:  5300 0000 1969 6e74 6567 6572 5f64 6174  S....integer_dat
+        0x0110:  6574 696d 6573 006f 6e00 5300 0000 1b49  etimes.on.S....I
+        0x0120:  6e74 6572 7661 6c53 7479 6c65 0070 6f73  ntervalStyle.pos
+        0x0130:  7467 7265 7300 5300 0000 1469 735f 7375  tgres.S....is_su
+        0x0140:  7065 7275 7365 7200 6f6e 0053 0000 0019  peruser.on.S....
+        0x0150:  7365 7276 6572 5f65 6e63 6f64 696e 6700  server_encoding.
+        0x0160:  5554 4638 0053 0000 0034 7365 7276 6572  UTF8.S...4server
+        0x0170:  5f76 6572 7369 6f6e 0031 342e 3137 2028  _version.14.17.(
+        0x0180:  4465 6269 616e 2031 342e 3137 2d31 2e70  Debian.14.17-1.p
+        0x0190:  6764 6731 3230 2b31 2900 5300 0000 2373  gdg120+1).S...#s
+        0x01a0:  6573 7369 6f6e 5f61 7574 686f 7269 7a61  ession_authoriza
+        0x01b0:  7469 6f6e 0070 6f73 7467 7265 7300 5300  tion.postgres.S.
+        0x01c0:  0000 2373 7461 6e64 6172 645f 636f 6e66  ..#standard_conf
+        0x01d0:  6f72 6d69 6e67 5f73 7472 696e 6773 006f  orming_strings.o
+        0x01e0:  6e00 5300 0000 1554 696d 655a 6f6e 6500  n.S....TimeZone.
+        0x01f0:  4574 632f 5554 4300 4b00 0000 0c00 01a5  Etc/UTC.K.......
+        0x0200:  77fd 7874 fa5a 0000 0005 49              w.xt.Z....I
+17:40:19.335423 lo    In  IP vmpostgres.48212 > vmpostgres.postgresql: Flags [.], ack 589, win 512, options [nop,nop,TS val 2309656273 ecr 2309656229], length 0
+        0x0000:  4500 0034 34f6 4000 4006 91ca c0a8 7959  E..44.@.@.....yY
+        0x0010:  c0a8 7959 bc54 1538 8adf ebbf a291 293c  ..yY.T.8......)<
+        0x0020:  8010 0200 742a 0000 0101 080a 89aa 8ed1  ....t*..........
+        0x0030:  89aa 8ea5                                ....
+:q!
+:q!
+^C
+12 packets captured
+28 packets received by filter
+0 packets dropped by kernel
+vagrant@vmpostgres:~$
