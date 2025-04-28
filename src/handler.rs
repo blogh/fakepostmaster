@@ -6,7 +6,7 @@ use std::{
     thread,
 };
 
-use crate::backend::{BackendMessage, ErrorMessage, RowData, RowDescription};
+use crate::backend::{BackendMessage, ErrorMessage, FieldData, FieldDescription};
 use crate::frontend::FrontendMessage;
 
 fn send_message<R>(tcp_writer: &mut BufWriter<R>, message: BackendMessage) -> anyhow::Result<()>
@@ -95,7 +95,7 @@ impl TcpHandler {
 
     pub fn simple_query_handler(
         &mut self,
-        executor: &dyn Fn(String) -> (Vec<RowDescription>, Vec<RowData>, String),
+        executor: &dyn Fn(String) -> (Vec<FieldDescription>, Vec<FieldData>, String),
     ) -> anyhow::Result<()> {
         // Query?
         let q = FrontendMessage::parse_query(&mut self.tcp_reader)?;
@@ -112,10 +112,6 @@ impl TcpHandler {
         // execute query
         let (column_desc, column_data, command_tag) = executor(query);
 
-        //let column_desc = Vec::new();
-        //let column_data = None; // Some(Vec::new());
-        //let command_tag = String::from("SELECT 1");
-
         // row description
         send_message(
             &mut self.tcp_writer,
@@ -125,12 +121,14 @@ impl TcpHandler {
         )?;
 
         // data row
-        send_message(
-            &mut self.tcp_writer,
-            BackendMessage::DataRow {
-                columns: column_data,
-            },
-        )?;
+        if column_data.len() > 0 {
+            send_message(
+                &mut self.tcp_writer,
+                BackendMessage::DataRow {
+                    columns: column_data,
+                },
+            )?;
+        }
 
         // Tell the client the commadn tag
         send_message(

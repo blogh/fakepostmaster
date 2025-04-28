@@ -9,8 +9,8 @@ use std::{
 
 use crate::bytes::CString;
 
-#[derive(Debug)]
-pub struct RowDescription {
+#[derive(Debug, PartialEq)]
+pub struct FieldDescription {
     pub name: String,
     pub relation_id: i32,  // id or 0
     pub attribute_id: i16, // id or 0
@@ -20,10 +20,82 @@ pub struct RowDescription {
     pub format: i16, // 0  text 1 binay
 }
 
+impl FieldDescription {
+    pub fn new(name: String, pgtype: PgType) -> Self {
+        return Self {
+            name,
+            relation_id: 0,
+            attribute_id: 0,
+            datatype_id: i32::from(&pgtype),
+            datatype_len: pgtype.typlen(),
+            datatype_mod: pgtype.typmod(),
+            format: pgtype.format(),
+        };
+    }
+}
+
 #[derive(Debug)]
-pub struct RowData {
+pub enum PgType {
+    Bool,
+    Int4,
+    Text,
+    Oid,
+}
+
+impl From<&PgType> for i32 {
+    fn from(pg_type: &PgType) -> Self {
+        match pg_type {
+            PgType::Bool => 16,
+            PgType::Int4 => 23,
+            PgType::Text => 25,
+            PgType::Oid => 26,
+        }
+    }
+}
+
+impl PgType {
+    pub fn typlen(&self) -> i16 {
+        match &self {
+            PgType::Bool => 1,
+            PgType::Int4 => 4,
+            PgType::Text => -1,
+            PgType::Oid => 4,
+        }
+    }
+    pub fn typmod(&self) -> i32 {
+        match &self {
+            PgType::Bool => -1,
+            PgType::Int4 => -1,
+            PgType::Text => -1,
+            PgType::Oid => -1,
+        }
+    }
+    pub fn format(&self) -> i16 {
+        match &self {
+            PgType::Bool => 0,
+            PgType::Int4 => 0,
+            PgType::Text => 1,
+            PgType::Oid => 0,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct FieldData {
     pub length: i32,
     pub data: Vec<u8>,
+}
+
+impl FieldData {
+    pub fn new_text(text: &String) -> Self {
+        let mut t = BytesMut::new();
+        t.put_cstring(text);
+
+        Self {
+            length: t.len() as i32,
+            data: t.to_vec(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -39,9 +111,9 @@ pub enum BackendMessage {
     AuthenticationMD5Password { salt: [u8; 4] },
     AuthenticationOk,
     CommmandComplete { command_tag: String },
-    DataRow { columns: Vec<RowData> },
+    DataRow { columns: Vec<FieldData> },
     ReadyForQuery,
-    RowDescription { columns: Vec<RowDescription> },
+    RowDescription { columns: Vec<FieldDescription> },
     ErrorResponse { messages: Vec<ErrorMessage> },
     ParameterStatus { parameter: String, value: String },
 }
@@ -124,7 +196,7 @@ impl BackendMessage {
     }
 
     //TODO: needs test
-    fn compose_data_row(&self, columns: &Vec<RowData>) -> anyhow::Result<BytesMut> {
+    fn compose_data_row(&self, columns: &Vec<FieldData>) -> anyhow::Result<BytesMut> {
         //FIXME: Horrible mess
         let mut t = BytesMut::new();
         let mut t2 = BytesMut::new();
@@ -149,7 +221,7 @@ impl BackendMessage {
         Ok(t)
     }
 
-    fn compose_row_description(&self, columns: &Vec<RowDescription>) -> anyhow::Result<BytesMut> {
+    fn compose_row_description(&self, columns: &Vec<FieldDescription>) -> anyhow::Result<BytesMut> {
         let mut t = BytesMut::new();
         let mut t2 = BytesMut::new();
 
@@ -235,17 +307,21 @@ mod test_backend {
         // typname   | text
         // typlen    | -1
         // typtypmod | -1
-        let bm = BackendMessage::RowDescription {
-            columns: vec![RowDescription {
-                name: String::from("set_config"),
-                relation_id: 0,
-                attribute_id: 0,
-                datatype_id: 25,
-                datatype_len: -1,
-                datatype_mod: -1,
-                format: 153,
-            }],
+        let rd = FieldDescription {
+            name: String::from("set_config"),
+            relation_id: 0,
+            attribute_id: 0,
+            datatype_id: 25,
+            datatype_len: -1,
+            datatype_mod: -1,
+            format: 153,
         };
+        assert_eq!(
+            rd,
+            FieldDescription::new(String::from("set_config"), PgType::Text)
+        );
+
+        let bm = BackendMessage::RowDescription { columns: vec![rd] };
         assert_eq!(
             bm.compose()?.to_vec(),
             [
@@ -254,6 +330,7 @@ mod test_backend {
                 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x99
             ]
         );
+
         Ok(())
     }
 
@@ -315,7 +392,7 @@ mod test_backend {
         // 0x0050:                      4400 0000 0a00 0100  ........D.......
         // 0x0060:  0000 00
         let bm = BackendMessage::DataRow {
-            columns: vec![RowData {
+            columns: vec![FieldData {
                 length: 0,
                 data: Vec::new(),
             }],

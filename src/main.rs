@@ -13,7 +13,7 @@ mod bytes;
 mod frontend;
 mod handler;
 
-use crate::backend::{BackendMessage, RowData, RowDescription};
+use crate::backend::{BackendMessage, FieldData, FieldDescription, PgType};
 use crate::frontend::FrontendMessage;
 use crate::handler::TcpHandler;
 
@@ -38,8 +38,16 @@ fn main() -> anyhow::Result<()> {
                 fn auth_func() -> bool {
                     true
                 }
-                fn executor(query: String) -> (Vec<RowDescription>, Vec<RowData>, String) {
-                    (Vec::new(), Vec::new(), String::from("SELECT 0"))
+                fn executor(query: String) -> (Vec<FieldDescription>, Vec<FieldData>, String) {
+                    let row_description = vec![FieldDescription::new(
+                        String::from("Custom Field"),
+                        PgType::Text,
+                    )];
+                    let row_data = vec![FieldData::new_text(&String::from("my data"))];
+                    let row_data = Vec::new();
+                    let command_tag = String::from("SELECT 0");
+
+                    (row_description, row_data, command_tag)
                 }
 
                 println!("accepted new connection");
