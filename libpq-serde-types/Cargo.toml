@@ -1,0 +1,9 @@
+[package]
+name = "libpq-serde-types"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+bytes = "1.10.1"
+libpq-serde-macros = { version = "0.1.0", path = "../libpq-serde-macros" }

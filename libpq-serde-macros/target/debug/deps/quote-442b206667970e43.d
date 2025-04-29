@@ -1,0 +1,11 @@
+/home/benoit/Documents/mystuff/dev/rust/tests/fakepostmaster/pgserde-macros/target/debug/deps/libquote-442b206667970e43.rmeta: /home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/lib.rs /home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/ext.rs /home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/format.rs /home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/ident_fragment.rs /home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/to_tokens.rs /home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/runtime.rs /home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/spanned.rs
+
+/home/benoit/Documents/mystuff/dev/rust/tests/fakepostmaster/pgserde-macros/target/debug/deps/quote-442b206667970e43.d: /home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/lib.rs /home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/ext.rs /home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/format.rs /home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/ident_fragment.rs /home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/to_tokens.rs /home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/runtime.rs /home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/spanned.rs
+
+/home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/lib.rs:
+/home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/ext.rs:
+/home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/format.rs:
+/home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/ident_fragment.rs:
+/home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/to_tokens.rs:
+/home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/runtime.rs:
+/home/benoit/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.37/src/spanned.rs:
