@@ -2,10 +2,12 @@ pub mod client;
 pub mod server;
 
 use anyhow::anyhow;
+use bytes::{BufMut, Bytes, BytesMut};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::net::TcpStream;
 
-use bytes::{BufMut, Bytes, BytesMut};
+use tracing::*;
+use tracing_subscriber;
 
 use libpq_serde_types::{ByteSized, Deserialize, Serialize};
 
@@ -59,10 +61,11 @@ where
     where
         U: MessageBody + Serialize + ByteSized + std::fmt::Debug,
     {
+        debug!("{msg:?}");
+
         let mut buffer = BytesMut::new();
         MessageHeader::new_raw_header_from_body(&mut buffer, &msg);
         msg.serialize(&mut buffer);
-        println!("{msg:#?}");
         self.write(&buffer)?;
 
         Ok(())
@@ -82,7 +85,7 @@ where
     where
         U: RequestBody + Serialize + ByteSized + std::fmt::Debug,
     {
-        println!("{msg:#?}");
+        debug!("{msg:?}");
 
         let mut buffer = BytesMut::new();
         buffer.put_i32(msg.byte_size() + 4);

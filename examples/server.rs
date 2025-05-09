@@ -1,5 +1,7 @@
 use bytes::BytesMut;
 use std::{ffi::CString, net::TcpListener};
+use tracing::*;
+use tracing_subscriber;
 
 use fakepostmaster::handler::server::TcpHandler;
 use fakepostmaster::message::{ColumnData, ColumnDescription, PgType};
@@ -9,8 +11,13 @@ use libpq_serde_types::{
 };
 
 fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .compact()
+        .init();
+
     let listener = TcpListener::bind("192.168.121.1:9092").unwrap();
-    println!("Listening on 192.168.121.1:9092");
+    info!("Listening on 192.168.121.1:9092");
 
     for stream in listener.incoming() {
         match stream {
@@ -37,7 +44,7 @@ fn main() -> anyhow::Result<()> {
                     (row_description, row_data, command_tag)
                 }
 
-                println!("accepted new connection");
+                info!("accepted new connection");
                 let mut handler = TcpHandler::new(stream)?;
                 let _connection_parameters = handler.md5_authentication_handler(&auth_func)?;
 
@@ -46,10 +53,10 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             Err(e) => {
-                println!("error: {}", e);
+                error!("error: {}", e);
             }
         }
-        println!("Request processed");
+        info!("Request processed");
     }
     Ok(())
 }

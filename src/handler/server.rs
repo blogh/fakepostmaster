@@ -3,6 +3,7 @@ use std::{
     io::{BufReader, BufWriter},
     net::TcpStream,
 };
+use tracing::*;
 
 use crate::handler::{LibPqReader, LibPqWriter};
 use crate::message::*;
@@ -27,7 +28,7 @@ impl TcpHandler {
     ) -> anyhow::Result<Vec<ParameterStatus>> {
         // StartupMessage: (ssl_mode) prefer => Text Auth
         let sm = StartupMessage::try_from(&mut RawRequest::get(&mut self.tcp_reader)?)?;
-        println!("{sm:#?}");
+        debug!("{sm:?}");
 
         // Ask for the Password
         //FIXME: random salt
@@ -79,6 +80,7 @@ impl TcpHandler {
             Ok(message) => message,
             _ => return Err(anyhow!("Query message expected")),
         };
+        debug!("{query_message:?}");
 
         // execute query
         let (column_desc, column_data, command_tag) = executor(query_message.query.into_string()?);

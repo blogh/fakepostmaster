@@ -9,3 +9,5 @@ bytes = "1.10.1"
 libpq-serde-macros = { version = "0.1.0", path = "libpq-serde-macros" }
 libpq-serde-types = { version = "0.1.0", path = "libpq-serde-types" }
 md-5 = "0.10.6"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"

@@ -3,6 +3,7 @@ use std::{
     io::{BufReader, BufWriter},
     net::TcpStream,
 };
+use tracing::*;
 
 use crate::handler::{LibPqReader, LibPqWriter};
 use crate::message::*;
@@ -40,7 +41,7 @@ impl TcpHandler {
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
         match AuthenticationMD5Password::try_from(&mut raw_message) {
             Ok(message) => {
-                println!("{message:#?}");
+                debug!("{message:?}");
                 self.tcp_writer
                     .put_message_and_flush(PasswordMessage::new_from_user_password(
                         &"md5user".to_string(),
@@ -54,28 +55,28 @@ impl TcpHandler {
         // Receive Authentication Ok
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
         match AuthenticationOk::try_from(&mut raw_message) {
-            Ok(message) => println!("{message:#?}"),
+            Ok(message) => debug!("{message:?}"),
             _ => return Err(anyhow!("AuthenticationOk message expected")),
         };
 
         // ParameterStatus Messages
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
         while let Some(BackendMessageKind::ParameterStatus) = raw_message.get_message_kind() {
-            println!("{:#?}", ParameterStatus::try_from(&mut raw_message)?);
+            debug!("{:#?}", ParameterStatus::try_from(&mut raw_message)?);
 
             raw_message = self.tcp_reader.get_raw_backend_message()?;
         }
 
         // BackendKeyData
         match BackendKeyData::try_from(&mut raw_message) {
-            Ok(message) => println!("{message:#?}"),
+            Ok(message) => debug!("{message:?}"),
             _ => return Err(anyhow!("BackendKeyData message expected")),
         }
 
         // ReadyForQuery
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
         match ReadyForQuery::try_from(&mut raw_message) {
-            Ok(message) => println!("{message:#?}"),
+            Ok(message) => debug!("{message:?}"),
             _ => return Err(anyhow!("ReadyForQuery message expected")),
         }
 
