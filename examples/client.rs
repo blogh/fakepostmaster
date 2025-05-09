@@ -19,6 +19,7 @@ fn main() -> anyhow::Result<()> {
             let mut handler = TcpHandler::new(stream)?;
 
             handler.md5_authentication_handler()?;
+            handler.simple_query_handler()?;
             info!("Connection ended");
         }
         Err(e) => {

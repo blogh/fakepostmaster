@@ -41,7 +41,7 @@ impl TcpHandler {
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
         match AuthenticationMD5Password::try_from(&mut raw_message) {
             Ok(message) => {
-                debug!("{message:?}");
+                debug!("rcv: {message:?}");
                 self.tcp_writer
                     .put_message_and_flush(PasswordMessage::new_from_user_password(
                         &"md5user".to_string(),
@@ -55,28 +55,28 @@ impl TcpHandler {
         // Receive Authentication Ok
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
         match AuthenticationOk::try_from(&mut raw_message) {
-            Ok(message) => debug!("{message:?}"),
+            Ok(message) => debug!("rcv: {message:?}"),
             _ => return Err(anyhow!("AuthenticationOk message expected")),
         };
 
         // ParameterStatus Messages
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
         while let Some(BackendMessageKind::ParameterStatus) = raw_message.get_message_kind() {
-            debug!("{:#?}", ParameterStatus::try_from(&mut raw_message)?);
+            debug!("rcv: {:?}", ParameterStatus::try_from(&mut raw_message)?);
 
             raw_message = self.tcp_reader.get_raw_backend_message()?;
         }
 
         // BackendKeyData
         match BackendKeyData::try_from(&mut raw_message) {
-            Ok(message) => debug!("{message:?}"),
+            Ok(message) => debug!("rcv: {message:?}"),
             _ => return Err(anyhow!("BackendKeyData message expected")),
         }
 
         // ReadyForQuery
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
         match ReadyForQuery::try_from(&mut raw_message) {
-            Ok(message) => debug!("{message:?}"),
+            Ok(message) => debug!("rcv: {message:?}"),
             _ => return Err(anyhow!("ReadyForQuery message expected")),
         }
 
@@ -84,6 +84,33 @@ impl TcpHandler {
     }
 
     pub fn simple_query_handler(&mut self) -> anyhow::Result<()> {
-        todo!()
+        self.tcp_writer
+            .put_message_and_flush(Query::new("SELECT 1 as a, 2 as a, 3 as a;".to_string())?)?;
+
+        let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
+        match RowDescription::try_from(&mut raw_message) {
+            Ok(message) => debug!("rcv: {message:?}"),
+            _ => return Err(anyhow!("RowDescription message expected")),
+        }
+
+        let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
+        match DataRow::try_from(&mut raw_message) {
+            Ok(message) => debug!("rcv: {message:?}"),
+            _ => return Err(anyhow!("DataRow message expected")),
+        }
+
+        let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
+        match CommandComplete::try_from(&mut raw_message) {
+            Ok(message) => debug!("rcv: {message:?}"),
+            _ => return Err(anyhow!("CommandComplete message expected")),
+        }
+
+        let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
+        match ReadyForQuery::try_from(&mut raw_message) {
+            Ok(message) => debug!("rcv: {message:?}"),
+            _ => return Err(anyhow!("ReadyForQuery message expected")),
+        }
+
+        Ok(())
     }
 }

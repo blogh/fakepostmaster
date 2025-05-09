@@ -28,7 +28,7 @@ impl TcpHandler {
     ) -> anyhow::Result<Vec<ParameterStatus>> {
         // StartupMessage: (ssl_mode) prefer => Text Auth
         let sm = StartupMessage::try_from(&mut RawRequest::get(&mut self.tcp_reader)?)?;
-        debug!("{sm:?}");
+        debug!("rcv: {sm:?}");
 
         // Ask for the Password
         //FIXME: random salt
@@ -38,7 +38,10 @@ impl TcpHandler {
         // PasswordMessage
         let mut raw_message = self.tcp_reader.get_raw_frontend_message()?;
         let _password_message = match PasswordMessage::try_from(&mut raw_message) {
-            Ok(message) => message,
+            Ok(message) => {
+                debug!("rcv: {message:?}");
+                message
+            }
             _ => return Err(anyhow!("Password message expected")),
         };
 
@@ -80,7 +83,7 @@ impl TcpHandler {
             Ok(message) => message,
             _ => return Err(anyhow!("Query message expected")),
         };
-        debug!("{query_message:?}");
+        debug!("rcv: {query_message:?}");
 
         // execute query
         let (column_desc, column_data, command_tag) = executor(query_message.query.into_string()?);

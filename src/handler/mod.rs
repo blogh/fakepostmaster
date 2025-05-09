@@ -27,7 +27,7 @@ where
         if let Some(BackendMessageKind::ErrorResponse) = raw_message.get_message_kind() {
             let error = ErrorResponse::try_from(&mut raw_message)?;
             //FIXME:
-            dbg!(error);
+            error!("{error:?}");
             Err(anyhow!("Error"))
         } else {
             Ok(raw_message)
@@ -61,7 +61,7 @@ where
     where
         U: MessageBody + Serialize + ByteSized + std::fmt::Debug,
     {
-        debug!("{msg:?}");
+        debug!("snd: {msg:?}");
 
         let mut buffer = BytesMut::new();
         MessageHeader::new_raw_header_from_body(&mut buffer, &msg);
@@ -85,7 +85,7 @@ where
     where
         U: RequestBody + Serialize + ByteSized + std::fmt::Debug,
     {
-        debug!("{msg:?}");
+        debug!("snd: {msg:?}");
 
         let mut buffer = BytesMut::new();
         buffer.put_i32(msg.byte_size() + 4);
