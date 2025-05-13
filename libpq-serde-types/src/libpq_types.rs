@@ -433,7 +433,7 @@ mod test {
 
     //----------------------------------------------------------------------------
     #[test]
-    fn i8_serialize() -> Result<()> {
+    fn i8_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         5_i8.serialize(&mut m);
         assert_eq!(vec![5_u8], m.to_vec());
@@ -442,7 +442,7 @@ mod test {
     }
 
     #[test]
-    fn i8_deserialize() -> Result<()> {
+    fn i8_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[0x08]);
         assert_eq!(8_i8, i8::deserialize(&mut buffer)?);
 
@@ -450,7 +450,7 @@ mod test {
     }
 
     #[test]
-    fn i8_byte_size() -> Result<()> {
+    fn i8_byte_size() -> anyhow::Result<()> {
         assert_eq!(1, 8_i8.byte_size());
 
         Ok(())
@@ -458,7 +458,7 @@ mod test {
 
     //----------------------------------------------------------------------------
     #[test]
-    fn i16_serialize() -> Result<()> {
+    fn i16_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         5_i16.serialize(&mut m);
         assert_eq!(vec![0_u8, 5_u8], m.to_vec());
@@ -467,7 +467,7 @@ mod test {
     }
 
     #[test]
-    fn i16_deserialize() -> Result<()> {
+    fn i16_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[0, 8]);
         assert_eq!(8_i16, i16::deserialize(&mut buffer)?);
 
@@ -475,7 +475,7 @@ mod test {
     }
 
     #[test]
-    fn i16_byte_size() -> Result<()> {
+    fn i16_byte_size() -> anyhow::Result<()> {
         assert_eq!(2, 8_i16.byte_size());
 
         Ok(())
@@ -483,7 +483,7 @@ mod test {
 
     //----------------------------------------------------------------------------
     #[test]
-    fn i32_serialize() -> Result<()> {
+    fn i32_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         5_i32.serialize(&mut m);
         assert_eq!(vec![0_u8, 0_u8, 0_u8, 5_u8], m.to_vec());
@@ -492,7 +492,7 @@ mod test {
     }
 
     #[test]
-    fn i32_deserialize() -> Result<()> {
+    fn i32_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[0, 0, 0, 8]);
         assert_eq!(8_i32, i32::deserialize(&mut buffer)?);
 
@@ -500,7 +500,7 @@ mod test {
     }
 
     #[test]
-    fn i32_byte_size() -> Result<()> {
+    fn i32_byte_size() -> anyhow::Result<()> {
         assert_eq!(4, 8i32.byte_size());
 
         Ok(())
@@ -545,7 +545,7 @@ mod test {
     }
 
     #[test]
-    fn byte_deserialize() -> Result<()> {
+    fn byte_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&['T' as u8]);
         assert_eq!('T' as u8, Byte::deserialize(&mut buffer)?);
 
@@ -553,7 +553,7 @@ mod test {
     }
 
     #[test]
-    fn byte_byte_size() -> Result<()> {
+    fn byte_byte_size() -> anyhow::Result<()> {
         assert_eq!(1, (1u8 as Byte).byte_size());
 
         Ok(())
@@ -561,7 +561,7 @@ mod test {
 
     //----------------------------------------------------------------------------
     #[test]
-    fn cstring_serialize() -> Result<()> {
+    fn cstring_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         CString::new("aldabis")?.serialize(&mut m);
         assert_eq!(
@@ -575,7 +575,7 @@ mod test {
     }
 
     #[test]
-    fn cstring_deserialize() -> Result<()> {
+    fn cstring_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[
             'a' as u8, 'l' as u8, 'd' as u8, 'a' as u8, 'b' as u8, 'i' as u8, 's' as u8, 0,
         ]);
@@ -591,7 +591,7 @@ mod test {
     }
 
     #[test]
-    fn cstring_byte_size() -> Result<()> {
+    fn cstring_byte_size() -> anyhow::Result<()> {
         assert_eq!(8, CString::new("aldabis")?.byte_size());
 
         Ok(())
@@ -599,7 +599,7 @@ mod test {
 
     //----------------------------------------------------------------------------
     #[test]
-    fn vec32_i32_serialize() -> Result<()> {
+    fn vec32_i32_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: Vec32<i32> = Vec32::from(vec![1, 2, 3, 4, 5]);
         v.serialize(&mut m);
@@ -615,7 +615,7 @@ mod test {
     }
 
     #[test]
-    fn vec32_byte_serialize() -> Result<()> {
+    fn vec32_byte_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: Vec32<Byte> = Vec32::from(vec![1, 2, 3, 4, 5]);
         v.serialize(&mut m);
@@ -628,7 +628,7 @@ mod test {
     }
 
     #[test]
-    fn vec32_cstring_serialize() -> Result<()> {
+    fn vec32_cstring_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: Vec32<CString> =
             Vec32::from(vec![CString::new("aldabis")?, CString::new("aldabis")?]);
@@ -646,7 +646,7 @@ mod test {
     }
 
     #[test]
-    fn vec32_empty_serialize() -> Result<()> {
+    fn vec32_empty_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: Vec32<CString> = Vec32::new();
         v.serialize(&mut m);
@@ -656,7 +656,7 @@ mod test {
     }
 
     #[test]
-    fn vec32_i32_deserialize() -> Result<()> {
+    fn vec32_i32_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[
             0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
             0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x05,
@@ -670,7 +670,7 @@ mod test {
     }
 
     #[test]
-    fn vec32_byte_deserialize() -> Result<()> {
+    fn vec32_byte_deserialize() -> anyhow::Result<()> {
         let mut buffer =
             Bytes::from_static(&[0x00, 0x00, 0x00, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05]);
         assert_eq!(
@@ -681,7 +681,7 @@ mod test {
     }
 
     #[test]
-    fn vec32_cstring_deserialize() -> Result<()> {
+    fn vec32_cstring_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[
             0x00, 0x00, 0x00, 0x02, 'a' as u8, 'l' as u8, 'd' as u8, 'a' as u8, 'b' as u8,
             'i' as u8, 's' as u8, 0, 'a' as u8, 'l' as u8, 'd' as u8, 'a' as u8, 'b' as u8,
@@ -696,7 +696,7 @@ mod test {
     }
 
     #[test]
-    fn vec32_empty_deserialize() -> Result<()> {
+    fn vec32_empty_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[0x00, 0x00, 0x00, 0x00]);
         assert_eq!(
             Vec32::<CString>::new(),
@@ -707,19 +707,19 @@ mod test {
     }
 
     #[test]
-    fn vec32_i32_byte_size() -> Result<()> {
+    fn vec32_i32_byte_size() -> anyhow::Result<()> {
         assert_eq!(24, Vec32::<i32>::from(vec![1, 2, 3, 4, 5]).byte_size());
         Ok(())
     }
 
     #[test]
-    fn vec32_byte_byte_size() -> Result<()> {
+    fn vec32_byte_byte_size() -> anyhow::Result<()> {
         assert_eq!(9, Vec32::<Byte>::from(vec![1, 2, 3, 4, 5]).byte_size());
         Ok(())
     }
 
     #[test]
-    fn vec32_cstring_byte_size() -> Result<()> {
+    fn vec32_cstring_byte_size() -> anyhow::Result<()> {
         assert_eq!(
             20,
             Vec32::<CString>::from(vec![CString::new("aldabis")?, CString::new("aldabis")?])
@@ -729,14 +729,14 @@ mod test {
     }
 
     #[test]
-    fn vec32_empty_byte_size() -> Result<()> {
+    fn vec32_empty_byte_size() -> anyhow::Result<()> {
         assert_eq!(4, Vec32::<CString>::from(vec![]).byte_size());
         Ok(())
     }
 
     //----------------------------------------------------------------------------
     #[test]
-    fn vec16_i32_serialize() -> Result<()> {
+    fn vec16_i32_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: Vec16<i32> = Vec16::from(vec![1, 2, 3, 4, 5]);
         v.serialize(&mut m);
@@ -752,7 +752,7 @@ mod test {
     }
 
     #[test]
-    fn vec16_byte_serialize() -> Result<()> {
+    fn vec16_byte_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: Vec16<Byte> = Vec16::from(vec![1, 2, 3, 4, 5]);
         v.serialize(&mut m);
@@ -762,7 +762,7 @@ mod test {
     }
 
     #[test]
-    fn vec16_cstring_serialize() -> Result<()> {
+    fn vec16_cstring_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: Vec16<CString> =
             Vec16::from(vec![CString::new("aldabis")?, CString::new("aldabis")?]);
@@ -780,7 +780,7 @@ mod test {
     }
 
     #[test]
-    fn vec16_empty_serialize() -> Result<()> {
+    fn vec16_empty_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: Vec16<CString> = Vec16::new();
         v.serialize(&mut m);
@@ -790,7 +790,7 @@ mod test {
     }
 
     #[test]
-    fn vec16_i32_deserialize() -> Result<()> {
+    fn vec16_i32_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[
             0x00, 0x05, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03,
             0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x05,
@@ -804,7 +804,7 @@ mod test {
     }
 
     #[test]
-    fn vec16_byte_deserialize() -> Result<()> {
+    fn vec16_byte_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[0x00, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05]);
         assert_eq!(
             Vec16::<Byte>::from(vec![1, 2, 3, 4, 5]),
@@ -815,7 +815,7 @@ mod test {
     }
 
     #[test]
-    fn vec16_cstring_deserialize() -> Result<()> {
+    fn vec16_cstring_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[
             0x00, 0x02, 'a' as u8, 'l' as u8, 'd' as u8, 'a' as u8, 'b' as u8, 'i' as u8,
             's' as u8, 0, 'a' as u8, 'l' as u8, 'd' as u8, 'a' as u8, 'b' as u8, 'i' as u8,
@@ -830,7 +830,7 @@ mod test {
     }
 
     #[test]
-    fn vec16_empty_deserialize() -> Result<()> {
+    fn vec16_empty_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[0x00, 0x00]);
         assert_eq!(
             Vec16::<CString>::new(),
@@ -841,19 +841,19 @@ mod test {
     }
 
     #[test]
-    fn vec16_i32_byte_size() -> Result<()> {
+    fn vec16_i32_byte_size() -> anyhow::Result<()> {
         assert_eq!(22, Vec16::<i32>::from(vec![1, 2, 3, 4, 5]).byte_size());
         Ok(())
     }
 
     #[test]
-    fn vec16_byte_byte_size() -> Result<()> {
+    fn vec16_byte_byte_size() -> anyhow::Result<()> {
         assert_eq!(7, Vec16::<Byte>::from(vec![1, 2, 3, 4, 5]).byte_size());
         Ok(())
     }
 
     #[test]
-    fn vec16_cstring_byte_size() -> Result<()> {
+    fn vec16_cstring_byte_size() -> anyhow::Result<()> {
         assert_eq!(
             18,
             Vec16::<CString>::from(vec![CString::new("aldabis")?, CString::new("aldabis")?])
@@ -863,14 +863,14 @@ mod test {
     }
 
     #[test]
-    fn vec16_empty_byte_size() -> Result<()> {
+    fn vec16_empty_byte_size() -> anyhow::Result<()> {
         assert_eq!(2, Vec16::<CString>::from(vec![]).byte_size());
         Ok(())
     }
 
     //----------------------------------------------------------------------------
     #[test]
-    fn vecnull_i32_serialize() -> Result<()> {
+    fn vecnull_i32_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: VecNull<i32> = VecNull::from(vec![1, 2, 3, 4, 5]);
         v.serialize(&mut m);
@@ -886,7 +886,7 @@ mod test {
     }
 
     #[test]
-    fn vecnull_byte_serialize() -> Result<()> {
+    fn vecnull_byte_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: VecNull<Byte> = VecNull::from(vec![1, 2, 3, 4, 5]);
         v.serialize(&mut m);
@@ -896,7 +896,7 @@ mod test {
     }
 
     #[test]
-    fn vecnull_cstring_serialize() -> Result<()> {
+    fn vecnull_cstring_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: VecNull<CString> =
             VecNull::from(vec![CString::new("aldabis")?, CString::new("aldabis")?]);
@@ -914,7 +914,7 @@ mod test {
     }
 
     #[test]
-    fn vecnull_empty_serialize() -> Result<()> {
+    fn vecnull_empty_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: VecNull<CString> = VecNull::new();
         v.serialize(&mut m);
@@ -924,7 +924,7 @@ mod test {
     }
 
     #[test]
-    fn vecnull_i32_deserialize() -> Result<()> {
+    fn vecnull_i32_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[
             0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00,
             0x00, 0x04, 0x00, 0x00, 0x00, 0x05, 0x00,
@@ -937,7 +937,7 @@ mod test {
     }
 
     #[test]
-    fn vecnull_byte_deserialize() -> Result<()> {
+    fn vecnull_byte_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x00]);
         assert_eq!(
             VecNull::<Byte>::from(vec![1, 2, 3, 4, 5]),
@@ -947,7 +947,7 @@ mod test {
     }
 
     #[test]
-    fn vecnull_cstring_deserialize() -> Result<()> {
+    fn vecnull_cstring_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[
             'a' as u8, 'l' as u8, 'd' as u8, 'a' as u8, 'b' as u8, 'i' as u8, 's' as u8, 0,
             'a' as u8, 'l' as u8, 'd' as u8, 'a' as u8, 'b' as u8, 'i' as u8, 's' as u8, 0, 0,
@@ -960,7 +960,7 @@ mod test {
     }
 
     #[test]
-    fn vecnull_empty_deserialize() -> Result<()> {
+    fn vecnull_empty_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[0x00]);
         assert_eq!(
             VecNull::<CString>::new(),
@@ -971,19 +971,19 @@ mod test {
     }
 
     #[test]
-    fn vecnull_i32_byte_size() -> Result<()> {
+    fn vecnull_i32_byte_size() -> anyhow::Result<()> {
         assert_eq!(21, VecNull::<i32>::from(vec![1, 2, 3, 4, 5]).byte_size());
         Ok(())
     }
 
     #[test]
-    fn vecnull_byte_byte_size() -> Result<()> {
+    fn vecnull_byte_byte_size() -> anyhow::Result<()> {
         assert_eq!(6, VecNull::<Byte>::from(vec![1, 2, 3, 4, 5]).byte_size());
         Ok(())
     }
 
     #[test]
-    fn vecnull_cstring_byte_size() -> Result<()> {
+    fn vecnull_cstring_byte_size() -> anyhow::Result<()> {
         assert_eq!(
             17,
             VecNull::<CString>::from(vec![CString::new("aldabis")?, CString::new("aldabis")?])
@@ -993,7 +993,7 @@ mod test {
     }
 
     #[test]
-    fn vecnull_empty_byte_size() -> Result<()> {
+    fn vecnull_empty_byte_size() -> anyhow::Result<()> {
         assert_eq!(1, VecNull::<CString>::from(vec![]).byte_size());
         Ok(())
     }
