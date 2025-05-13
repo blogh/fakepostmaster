@@ -97,7 +97,7 @@ impl TryFrom<i32> for RequestMessageKind {
             80877102 => Ok(Self::CancelRequest),
             80877104 => Ok(Self::GSSENCRequest),
             80877103 => Ok(Self::SSLRequest),
-            _ => Err(anyhow!("Invalid request message")),
+            _ => Err(anyhow!("Invalid request message: {request_code}")),
         }
     }
 }
@@ -105,6 +105,32 @@ impl TryFrom<i32> for RequestMessageKind {
 //*----------------------------------------------------------------------------
 // BackendMessage & FrontendMessage handling
 //*----------------------------------------------------------------------------
+
+#[derive(Debug, PartialEq, SerdeLibpqData)]
+pub struct MessageHeader {
+    pub message_type: u8,
+    pub length: i32,
+}
+
+impl MessageHeader {
+    pub fn new_header_from_body<T>(body: &T) -> Self
+    where
+        T: MessageBody + ByteSized,
+    {
+        Self {
+            message_type: body.message_type(),
+            length: body.byte_size() + 4,
+        }
+    }
+
+    pub fn new_raw_header_from_body<T>(buffer: &mut BytesMut, body: &T)
+    where
+        T: MessageBody + ByteSized,
+    {
+        buffer.put_u8(body.message_type());
+        buffer.put_i32(body.byte_size() + 4);
+    }
+}
 
 /// A body has a type
 pub trait MessageBody {
@@ -246,7 +272,7 @@ impl TryFrom<u8> for BackendMessageKind {
             0x73 /* 's' */ => Ok(BackendMessageKind::PortalSuspended),
             0x5a /* 'Z' */ => Ok(BackendMessageKind::ReadyForQuery),
             0x54 /* 'T' */ => Ok(BackendMessageKind::RowDescription),
-            _ => Err(anyhow!("Unsupported code for backend message")),
+            _ => Err(anyhow!("Unsupported code for backend message: {msg_code}")),
         }
     }
 }
@@ -299,7 +325,9 @@ impl TryFrom<i32> for AuthenticationMessageKind {
             10 => Ok(AuthenticationMessageKind::SASL),
             11 => Ok(AuthenticationMessageKind::SASLContinue),
             12 => Ok(AuthenticationMessageKind::SASLFinal),
-            _ => Err(anyhow!("Unsupported code for authentication message")),
+            _ => Err(anyhow!(
+                "Unsupported code for authentication message: {msg_code}"
+            )),
         }
     }
 }
@@ -334,32 +362,6 @@ impl RawFrontendMessage {
 
     pub fn get_message_kind(&self) -> Option<FrontendMessageKind> {
         FrontendMessageKind::try_from(self.header.message_type).ok()
-    }
-}
-
-#[derive(Debug, PartialEq, SerdeLibpqData)]
-pub struct MessageHeader {
-    pub message_type: u8,
-    pub length: i32,
-}
-
-impl MessageHeader {
-    pub fn new_header_from_body<T>(body: &T) -> Self
-    where
-        T: MessageBody + ByteSized,
-    {
-        Self {
-            message_type: body.message_type(),
-            length: body.byte_size() + 4,
-        }
-    }
-
-    pub fn new_raw_header_from_body<T>(buffer: &mut BytesMut, body: &T)
-    where
-        T: MessageBody + ByteSized,
-    {
-        buffer.put_u8(body.message_type());
-        buffer.put_i32(body.byte_size() + 4);
     }
 }
 
@@ -430,7 +432,7 @@ impl TryFrom<u8> for FrontendMessageKind {
             0x50 /* P */ => Err(anyhow!(
                 "Frontend Message kind cannot be guessed without context: 'P'"
             )),
-            _ => Err(anyhow!("Unsupported code for frontend message")),
+            _ => Err(anyhow!("Unsupported code for frontend message: {msg_code}")),
         }
     }
 }
