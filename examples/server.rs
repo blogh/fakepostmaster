@@ -36,7 +36,7 @@ fn main() -> anyhow::Result<()> {
                         CString::new(String::from("my data")).expect("No 0x00 in strings");
                     col_data.serialize(&mut buffer);
                     let col_data: Vec32<Byte> = buffer.to_vec().into();
-                    let row_data = vec![col_data];
+                    let row_data = vec![Some(col_data)];
 
                     //let row_data = Vec::new();
                     let command_tag = String::from("SELECT 0");

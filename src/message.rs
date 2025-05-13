@@ -756,7 +756,7 @@ impl DataRow {
     }
 }
 
-pub type ColumnData = Vec32<Byte>;
+pub type ColumnData = Option<Vec32<Byte>>;
 
 // Describe (F)
 // * Byte1('D') Identifies the message as a Describe command.
@@ -1266,7 +1266,6 @@ pub struct Terminate {}
 mod test {
     use super::*;
     use bytes::{Bytes, BytesMut};
-    use std::io::{BufReader, Cursor, Read};
 
     #[test]
     fn authentication_ok_serialize() -> anyhow::Result<()> {
@@ -1306,11 +1305,14 @@ mod test {
         Ok(())
     }
 
+    #[test]
     fn datarow_emptydata_deserialize() -> anyhow::Result<()> {
         // Empty Row Data message
         // 0x0050:                      4400 0000 0a00 0100  ........D.......
         // 0x0060:  0000 00
-        let m = DataRow::new(Vec::<ColumnData>::from([ColumnData::new()]));
+
+        //FIXME: I should use ColumnData
+        let m = DataRow::new(Vec::<ColumnData>::from([Some(Vec32::new())]));
         let h = MessageHeader {
             message_type: 'D' as u8,
             length: 4 + m.byte_size(),
@@ -1333,8 +1335,10 @@ mod test {
         // Empty Row Data message
         // 0x0050:                      4400 0000 0a00 0100  ........D.......
         // 0x0060:  0000 00
+
+        //FIXME: I should use ColumnData
         let col_data = Vec::<Byte>::from(['1' as u8]);
-        let m = DataRow::new(Vec::<ColumnData>::from([ColumnData::from(col_data)]));
+        let m = DataRow::new(Vec::<ColumnData>::from([Some(Vec32::from(col_data))]));
         let h = MessageHeader {
             message_type: 'D' as u8,
             length: 4 + m.byte_size(),

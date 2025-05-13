@@ -8,6 +8,52 @@ use crate::{ByteSized, Deserialize, Serialize};
 // https://www.postgresql.org/docs/17/protocol-message-types.html
 
 //--------------------------------------------------------------------------------
+impl<T> Serialize for Option<Vec32<T>>
+where
+    T: Serialize,
+{
+    fn serialize(&self, buffer: &mut BytesMut) {
+        match self {
+            Some(t) => t.serialize(buffer),
+            None => buffer.put_slice(&[0xFF, 0xFF, 0xFF, 0xFF]),
+        }
+    }
+}
+
+impl<T> Deserialize for Option<Vec32<T>>
+where
+    T: Deserialize,
+{
+    fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+        Bytes: Buf,
+    {
+        let mut tbuffer = [0_u8; 4];
+        //FIXME: is it safe if buffer is smaller than tbuffer?
+        //it should panic from what I understand
+        tbuffer.copy_from_slice(&buffer[0..4]);
+
+        match tbuffer {
+            [0xFF, 0xFF, 0xFF, 0xFF] => Ok(None),
+            _ => Ok(Some(Vec32::<T>::deserialize(buffer)?)),
+        }
+    }
+}
+
+impl<T> ByteSized for Option<Vec32<T>>
+where
+    T: ByteSized,
+{
+    fn byte_size(&self) -> i32 {
+        match self {
+            None => 4,
+            Some(t) => t.byte_size(),
+        }
+    }
+}
+
+//--------------------------------------------------------------------------------
 impl Serialize for i8 {
     fn serialize(&self, buffer: &mut BytesMut) {
         buffer.put_i8(*self);
@@ -995,6 +1041,63 @@ mod test {
     #[test]
     fn vecnull_empty_byte_size() -> anyhow::Result<()> {
         assert_eq!(1, VecNull::<CString>::from(vec![]).byte_size());
+        Ok(())
+    }
+    //----------------------------------------------------------------------------
+    #[test]
+    fn optionvec32_none_serialize() -> anyhow::Result<()> {
+        let mut m = BytesMut::new();
+        let o: Option<Vec32<i32>> = None;
+        o.serialize(&mut m);
+
+        assert_eq!(vec![0xFF, 0xFF, 0xFF, 0xFF], m.to_vec());
+
+        Ok(())
+    }
+
+    #[test]
+    fn optionvec32_some_serialize() -> anyhow::Result<()> {
+        let mut m = BytesMut::new();
+        let o: Option<Vec32<i32>> = Some(Vec32::from(vec![1_i32]));
+        o.serialize(&mut m);
+
+        assert_eq!(
+            vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01],
+            m.to_vec()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn optionvec32_none_deserialize() -> anyhow::Result<()> {
+        let o: Option<Vec32<i32>> = None;
+        let mut buffer = Bytes::from_static(&[0xFF, 0xFF, 0xFF, 0xFF]);
+
+        assert_eq!(o, Option::<Vec32::<i32>>::deserialize(&mut buffer)?);
+        Ok(())
+    }
+
+    #[test]
+    fn optionvec32_some_deserialize() -> anyhow::Result<()> {
+        let o: Option<Vec32<i32>> = Some(Vec32::from(vec![10_i32]));
+        let mut buffer = Bytes::from_static(&[0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x0A]);
+
+        assert_eq!(o, Option::<Vec32::<i32>>::deserialize(&mut buffer)?);
+        Ok(())
+    }
+
+    #[test]
+    fn optionvec32_none_byte_size() -> anyhow::Result<()> {
+        let o: Option<Vec32<i32>> = None;
+        assert_eq!(4, o.byte_size());
+        Ok(())
+    }
+
+    #[test]
+    fn optionvec32_some_byte_size() -> anyhow::Result<()> {
+        let o: Option<Vec32<i32>> = Some(Vec32::from(vec![0_i32]));
+        assert_eq!(8, o.byte_size());
         Ok(())
     }
 }

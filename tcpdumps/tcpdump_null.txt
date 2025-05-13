@@ -1,0 +1,56 @@
+postgres@vmpostgres:~$ sudo tcpdump -i any port 5435 -X
+tcpdump: data link type LINUX_SLL2
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on any, link-type LINUX_SLL2 (Linux cooked v2), snapshot length 262144 bytes
+10:02:52.831355 lo    In  IP localhost.54688 > localhost.5435: Flags [P.], seq 2135098158:2135098648, ack 2859689580, win 512, options [nop,nop,TS val 2724532861 ecr 2724521173], length 490
+        0x0000:  4500 021e 346c 4000 4006 066c 7f00 0001  E...4l@.@..l....
+        0x0010:  7f00 0001 d5a0 153b 7f43 032e aa73 666c  .......;.C...sfl
+        0x0020:  8018 0200 0013 0000 0101 080a a265 127d  .............e.}
+        0x0030:  a264 e4d5 5100 0001 e973 656c 6563 7420  .d..Q....select.
+        0x0040:  6f2e 6e2c 2070 2e70 6172 7473 7472 6174  o.n,.p.partstrat
+        0x0050:  2c20 7067 5f63 6174 616c 6f67 2e63 6f75  ,.pg_catalog.cou
+        0x0060:  6e74 2869 2e69 6e68 7061 7265 6e74 2920  nt(i.inhparent).
+        0x0070:  6672 6f6d 2070 675f 6361 7461 6c6f 672e  from.pg_catalog.
+        0x0080:  7067 5f63 6c61 7373 2061 7320 6320 6a6f  pg_class.as.c.jo
+        0x0090:  696e 2070 675f 6361 7461 6c6f 672e 7067  in.pg_catalog.pg
+        0x00a0:  5f6e 616d 6573 7061 6365 2061 7320 6e20  _namespace.as.n.
+        0x00b0:  6f6e 2028 6e2e 6f69 6420 3d20 632e 7265  on.(n.oid.=.c.re
+        0x00c0:  6c6e 616d 6573 7061 6365 2920 6372 6f73  lnamespace).cros
+        0x00d0:  7320 6a6f 696e 206c 6174 6572 616c 2028  s.join.lateral.(
+        0x00e0:  7365 6c65 6374 2070 675f 6361 7461 6c6f  select.pg_catalo
+        0x00f0:  672e 6172 7261 795f 706f 7369 7469 6f6e  g.array_position
+        0x0100:  2870 675f 6361 7461 6c6f 672e 6375 7272  (pg_catalog.curr
+        0x0110:  656e 745f 7363 6865 6d61 7328 7472 7565  ent_schemas(true
+        0x0120:  292c 206e 2e6e 7370 6e61 6d65 2929 2061  ),.n.nspname)).a
+        0x0130:  7320 6f28 6e29 206c 6566 7420 6a6f 696e  s.o(n).left.join
+        0x0140:  2070 675f 6361 7461 6c6f 672e 7067 5f70  .pg_catalog.pg_p
+        0x0150:  6172 7469 7469 6f6e 6564 5f74 6162 6c65  artitioned_table
+        0x0160:  2061 7320 7020 6f6e 2028 702e 7061 7274  .as.p.on.(p.part
+        0x0170:  7265 6c69 6420 3d20 632e 6f69 6429 206c  relid.=.c.oid).l
+        0x0180:  6566 7420 6a6f 696e 2070 675f 6361 7461  eft.join.pg_cata
+        0x0190:  6c6f 672e 7067 5f69 6e68 6572 6974 7320  log.pg_inherits.
+        0x01a0:  6173 2069 206f 6e20 2863 2e6f 6964 203d  as.i.on.(c.oid.=
+        0x01b0:  2069 2e69 6e68 7061 7265 6e74 2920 7768  .i.inhparent).wh
+        0x01c0:  6572 6520 632e 7265 6c6e 616d 6520 3d20  ere.c.relname.=.
+        0x01d0:  2770 6762 656e 6368 5f61 6363 6f75 6e74  'pgbench_account
+        0x01e0:  7327 2061 6e64 206f 2e6e 2069 7320 6e6f  s'.and.o.n.is.no
+        0x01f0:  7420 6e75 6c6c 2067 726f 7570 2062 7920  t.null.group.by.
+        0x0200:  312c 2032 206f 7264 6572 2062 7920 3120  1,.2.order.by.1.
+        0x0210:  6173 6320 6c69 6d69 7420 310a 3b00       asc.limit.1.;.
+10:02:52.834341 lo    In  IP localhost.5435 > localhost.54688: Flags [P.], seq 1:121, ack 490, win 512, options [nop,nop,TS val 2724532864 ecr 2724532861], length 120
+        0x0000:  4500 00ac 1654 4000 4006 25f6 7f00 0001  E....T@.@.%.....
+        0x0010:  7f00 0001 153b d5a0 aa73 666c 7f43 0518  .....;...sfl.C..
+        0x0020:  8018 0200 fea0 0000 0101 080a a265 1280  .............e..
+        0x0030:  a265 127d 5400 0000 4e00 036e 0000 0000  .e.}T...N..n....
+        0x0040:  0000 0000 0000 1700 04ff ffff ff00 0070  ...............p
+        0x0050:  6172 7473 7472 6174 0000 000d 1600 0200  artstrat........
+        0x0060:  0000 1200 01ff ffff ff00 0063 6f75 6e74  ...........count
+        0x0070:  0000 0000 0000 0000 0000 1400 08ff ffff  ................
+        0x0080:  ff00 0044 0000 0014 0003 0000 0001 32ff  ...D..........2.
+        0x0090:  ffff ff00 0000 0130 4300 0000 0d53 454c  .......0C....SEL
+        0x00a0:  4543 5420 3100 5a00 0000 0549            ECT.1.Z....I
+10:02:52.834354 lo    In  IP localhost.54688 > localhost.5435: Flags [.], ack 121, win 512, options [nop,nop,TS val 2724532864 ecr 2724532864], length 0
+        0x0000:  4500 0034 346d 4000 4006 0855 7f00 0001  E..44m@.@..U....
+        0x0010:  7f00 0001 d5a0 153b 7f43 0518 aa73 66e4  .......;.C...sf.
+        0x0020:  8010 0200 fe28 0000 0101 080a a265 1280  .....(.......e..
+        0x0030:  a265 1280                                .e..
