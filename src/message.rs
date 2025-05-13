@@ -675,6 +675,9 @@ impl CommandComplete {
 // * Byten Data that forms part of a COPY data stream. Messages sent from the backend will always
 //     correspond to single data rows, but messages sent by frontends might divide the data stream
 //     arbitrarily.
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody, TryFromRawBackendMessage)]
+#[message_body(kind = 'd')]
+pub struct CopyData {}
 
 // CopyDone (F & B)
 // * Byte1('c') Identifies the message as a COPY-complete indicator.
@@ -720,6 +723,12 @@ impl CommandComplete {
 // * Int16 The number of columns in the data to be copied (denoted N below).
 // * Int16[N] The format codes to be used for each column. Each must presently be zero (text) or one
 //     (binary). All must be zero if the overall copy format is textual.
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody, TryFromRawBackendMessage)]
+#[message_body(kind = 'W')]
+pub struct CopyBothResponse {
+    pub copy_format: i8,
+    pub format_code: Vec16<Byte>,
+}
 
 // DataRow (B)
 // * Byte1('D') Identifies the message as a data row.

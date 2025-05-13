@@ -77,6 +77,29 @@ impl ByteSized for i32 {
 }
 
 //--------------------------------------------------------------------------------
+impl Serialize for i64 {
+    fn serialize(&self, buffer: &mut BytesMut) {
+        buffer.put_i64(*self);
+    }
+}
+
+impl Deserialize for i64 {
+    fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+        Bytes: Buf,
+    {
+        buffer.try_get_i64().map_err(|e| e.into())
+    }
+}
+
+impl ByteSized for i64 {
+    fn byte_size(&self) -> i32 {
+        4
+    }
+}
+
+//--------------------------------------------------------------------------------
 pub type Byte = u8;
 
 impl Serialize for Byte {
@@ -485,7 +508,35 @@ mod test {
 
     //----------------------------------------------------------------------------
     #[test]
-    fn byte_serialize() -> Result<()> {
+    fn i64_serialize() -> anyhow::Result<()> {
+        let mut m = BytesMut::new();
+        5_i64.serialize(&mut m);
+        assert_eq!(
+            vec![0_u8, 0_u8, 0_u8, 0_u8, 0_u8, 0_u8, 0_u8, 5_u8],
+            m.to_vec()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn i64_deserialize() -> anyhow::Result<()> {
+        let mut buffer = Bytes::from_static(&[0, 0, 0, 0, 0, 0, 0, 8]);
+        assert_eq!(8_i64, i64::deserialize(&mut buffer)?);
+
+        Ok(())
+    }
+
+    #[test]
+    fn i64_byte_size() -> anyhow::Result<()> {
+        assert_eq!(4, 8i64.byte_size());
+
+        Ok(())
+    }
+
+    //----------------------------------------------------------------------------
+    #[test]
+    fn byte_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         ('A' as u8).serialize(&mut m);
         assert_eq!(vec!['A' as u8], m.to_vec());
