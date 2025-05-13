@@ -1259,6 +1259,8 @@ pub struct ProtocolVersion {
 // * Byte1('X') Identifies the message as a termination.
 // * Int32(4)
 // Length of message contents in bytes, including self.
+#[derive(Debug, PartialEq, SerdeLibpqData)]
+pub struct Terminate {}
 
 #[cfg(test)]
 mod test {

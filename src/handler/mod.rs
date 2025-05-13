@@ -1,5 +1,6 @@
 pub mod client;
 pub mod lclient;
+pub mod passthru;
 pub mod server;
 
 use anyhow::anyhow;
