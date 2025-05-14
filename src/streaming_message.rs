@@ -1,11 +1,7 @@
 use anyhow::anyhow;
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::Bytes;
 use libpq_serde_macros::SerdeLibpqData;
-use libpq_serde_types::{
-    ByteSized, Deserialize, Serialize,
-    libpq_types::{Byte, Vec16, Vec32},
-};
-use std::ffi::CString;
+use libpq_serde_types::{ByteSized, Deserialize, Serialize, libpq_types::Byte};
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct StreamingHeader {
@@ -72,6 +68,7 @@ pub struct XLogData {
     wal_data_start: i64,
     end_of_wal: i64,
     timestamp: i64,
+    //NOTE: The wal data stream is implemented as a logical message
 }
 
 // Primary keepalive message (B)
