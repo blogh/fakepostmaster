@@ -63,7 +63,6 @@ impl TcpHandler {
             _ => return Err(anyhow!("AuthenticationOk message expected")),
         };
 
-        // ParameterStatus Messages
         let mut raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
         while let Some(BackendMessageKind::ParameterStatus) = raw_message.get_message_kind() {
             let message = ParameterStatus::try_from(&mut raw_message)?;
@@ -73,7 +72,6 @@ impl TcpHandler {
             raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
         }
 
-        // BackendKeyData
         match BackendKeyData::try_from(&mut raw_message) {
             Ok(message) => {
                 debug!("srv rcv: {message:?}");
@@ -82,7 +80,6 @@ impl TcpHandler {
             _ => return Err(anyhow!("BackendKeyData message expected")),
         }
 
-        // ReadyForQuery
         let mut raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
         match ReadyForQuery::try_from(&mut raw_message) {
             Ok(message) => {
@@ -96,7 +93,10 @@ impl TcpHandler {
     }
 
     pub fn simple_query_handler(&mut self) -> anyhow::Result<()> {
-        // Query?
+        //FIXME: See handler/client.rs
+        //NOTE: As is the perfs are as ugly as can be (+3/5) because we open
+        // all the messages before repackaging them and sending them. This is not
+        // necessary. It was just a trial.
         let mut raw_message = self.cli_tcp_reader.get_raw_frontend_message()?;
         match Query::try_from(&mut raw_message) {
             Ok(message) => {
