@@ -33,6 +33,7 @@ pub struct RequestHeader {
 /// * CancelRequest,
 /// * GSSENCRequest,
 /// * SSLRequest,
+#[derive(Debug)]
 pub struct RawRequest {
     pub header: RequestHeader,
     pub request_kind: RequestMessageKind,
