@@ -124,7 +124,8 @@ pub struct Begin {
 // * Byten The content of the logical decoding message.
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct Message {
-    pub txn_id: i32,
+    //NOTE: Only for streamed transaction
+    //pub txn_id: i32,
     pub is_txn: i8,
     pub lsn: i64,
     pub prefix: CString,
@@ -175,7 +176,8 @@ pub struct Origin {
 // * Int32 Type modifier of the column (atttypmod).
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct Relation {
-    pub txn_id: i32,
+    //NOTE: Only for streamed transaction
+    //pub txn_id: i32,
     pub rel_oid: i32,
     pub namespace: CString,
     pub relname: CString,
@@ -200,7 +202,8 @@ pub struct ColumnDescription {
 //* String Name of the data type.
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct Type {
-    pub txn_id: i32,
+    //NOTE: Only for streamed transaction
+    //pub txn_id: i32,
     pub type_oid: i32,
     pub namespace: CString,
     pub type_name: CString,
@@ -215,9 +218,10 @@ pub struct Type {
 // * TupleData TupleData message part representing the contents of new tuple.
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct Insert {
-    pub txn_id: i32,
+    //NOTE: Only for streamed transaction
+    //pub txn_id: i32,
     pub rel_oid: i32,
-    pub new_tuple: CString,
+    pub new_tuple: Byte,
     pub new_tuple_data: TupleData,
 }
 
@@ -240,7 +244,8 @@ pub struct Insert {
 // but never both of them.
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct Update {
-    pub txn_id: i32,
+    //NOTE: Only for streamed transaction
+    //pub txn_id: i32,
     pub rel_oid: i32,
     pub key_tuple: Byte,
     pub old_tuple: Byte,
@@ -264,7 +269,8 @@ pub struct Update {
 // The Delete message may contain either a 'K' message part or an 'O' message part, but never both of them.
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct Delete {
-    pub txn_id: i32,
+    //NOTE: Only for streamed transaction
+    //pub txn_id: i32,
     pub rel_oid: i32,
     pub key_tuple: Byte,
     pub old_tuple: Byte,
@@ -281,7 +287,8 @@ pub struct Delete {
 //       repeated for each relation.
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct Truncate {
-    pub txn_id: i32,
+    //NOTE: Only for streamed transaction
+    //pub txn_id: i32,
     pub rel_cnt: i32,
     pub flag: i8,
     //FIXME: The encoding is wrong here
