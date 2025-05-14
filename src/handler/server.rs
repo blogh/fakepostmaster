@@ -26,16 +26,13 @@ impl TcpHandler {
         &mut self,
         auth_function: &dyn Fn() -> bool,
     ) -> anyhow::Result<Vec<ParameterStatus>> {
-        // StartupMessage: (ssl_mode) prefer => Text Auth
         let sm = StartupMessage::try_from(&mut RawRequest::get(&mut self.tcp_reader)?)?;
         debug!("rcv: {sm:?}");
 
-        // Ask for the Password
         //FIXME: random salt
         self.tcp_writer
             .put_message_and_flush(AuthenticationMD5Password::new([1, 2, 3, 4]))?;
 
-        // PasswordMessage
         let mut raw_message = self.tcp_reader.get_raw_frontend_message()?;
         let _password_message = match PasswordMessage::try_from(&mut raw_message) {
             Ok(message) => {
@@ -46,17 +43,14 @@ impl TcpHandler {
         };
 
         if auth_function() {
-            // Validate the authentication
             self.tcp_writer.put_message(AuthenticationOk::new())?;
 
-            // Validate the authentication
             //FIXME: There should me much mode parameters to send back to the client..
             self.tcp_writer.put_message(ParameterStatus::new(
                 &String::from("server_version"),
                 &String::from("0.1 (fakepostmaster)"),
             )?)?;
 
-            // Tell the client he can continue
             self.tcp_writer
                 .put_message_and_flush(ReadyForQuery::new(TransactionIndicator::Idle))?;
 
@@ -77,7 +71,7 @@ impl TcpHandler {
         &mut self,
         executor: &dyn Fn(String) -> (Vec<ColumnDescription>, Vec<ColumnData>, String),
     ) -> anyhow::Result<()> {
-        // Query?
+        //FIXME: See handler/client.rs
         let mut raw_message = self.tcp_reader.get_raw_frontend_message()?;
         let query_message = match Query::try_from(&mut raw_message) {
             Ok(message) => message,
@@ -85,23 +79,18 @@ impl TcpHandler {
         };
         debug!("rcv: {query_message:?}");
 
-        // execute query
         let (column_desc, column_data, command_tag) = executor(query_message.query.into_string()?);
 
-        // row description
         self.tcp_writer
             .put_message(RowDescription::new(column_desc))?;
 
-        // data row
         if column_data.len() > 0 {
             self.tcp_writer.put_message(DataRow::new(column_data))?;
         }
 
-        // Tell the client the commadn tag
         self.tcp_writer
             .put_message(CommandComplete::new(command_tag)?)?;
 
-        // Tell the client he can continue
         self.tcp_writer
             .put_message_and_flush(ReadyForQuery::new(TransactionIndicator::Idle))?;
 

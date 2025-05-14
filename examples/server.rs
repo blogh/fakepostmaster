@@ -49,6 +49,7 @@ fn main() -> anyhow::Result<()> {
                 let _connection_parameters = handler.md5_authentication_handler(&auth_func)?;
 
                 loop {
+                    //FIXME: Support Terminate
                     handler.simple_query_handler(&executor)?;
                 }
             }
