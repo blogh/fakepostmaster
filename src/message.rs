@@ -182,6 +182,75 @@ impl RawBackendMessage {
     }
 }
 
+pub enum BackendMessage {
+    AuthenticationOk(AuthenticationOk),
+    AuthenticationMD5Password(AuthenticationMD5Password),
+    BackendKeyData(BackendKeyData),
+    CommandComplete(CommandComplete),
+    CopyData(CopyData),
+    CopyBothResponse(CopyBothResponse),
+    DataRow(DataRow),
+    ErrorResponse(ErrorResponse),
+    ParameterStatus(ParameterStatus),
+    ReadyForQuery(ReadyForQuery),
+    RowDescription(RowDescription),
+}
+
+impl TryFrom<RawBackendMessage> for BackendMessage {
+    type Error = anyhow::Error;
+    fn try_from(mut raw_message: RawBackendMessage) -> anyhow::Result<BackendMessage> {
+        match raw_message.get_message_kind() {
+            Some(BackendMessageKind::Authentication) => match raw_message.get_auth_message_kind() {
+                Some(AuthenticationMessageKind::Ok) => Ok(BackendMessage::AuthenticationOk(
+                    AuthenticationOk::try_from(&mut raw_message)?,
+                )),
+                Some(AuthenticationMessageKind::MD5Password) => {
+                    Ok(BackendMessage::AuthenticationMD5Password(
+                        AuthenticationMD5Password::try_from(&mut raw_message)?,
+                    ))
+                }
+                //TODO: what about None?
+                _ => Err(anyhow!(
+                    "Unsupported BackendMessage: {:?}",
+                    raw_message.get_auth_message_kind()
+                )),
+            },
+            Some(BackendMessageKind::BackendKeyData) => Ok(BackendMessage::BackendKeyData(
+                BackendKeyData::try_from(&mut raw_message)?,
+            )),
+            Some(BackendMessageKind::CommandComplete) => Ok(BackendMessage::CommandComplete(
+                CommandComplete::try_from(&mut raw_message)?,
+            )),
+            Some(BackendMessageKind::CopyData) => Ok(BackendMessage::CopyData(CopyData::try_from(
+                &mut raw_message,
+            )?)),
+            Some(BackendMessageKind::CopyBothResponse) => Ok(BackendMessage::CopyBothResponse(
+                CopyBothResponse::try_from(&mut raw_message)?,
+            )),
+            Some(BackendMessageKind::DataRow) => Ok(BackendMessage::DataRow(DataRow::try_from(
+                &mut raw_message,
+            )?)),
+            Some(BackendMessageKind::ErrorResponse) => Ok(BackendMessage::ErrorResponse(
+                ErrorResponse::try_from(&mut raw_message)?,
+            )),
+            Some(BackendMessageKind::ParameterStatus) => Ok(BackendMessage::ParameterStatus(
+                ParameterStatus::try_from(&mut raw_message)?,
+            )),
+            Some(BackendMessageKind::ReadyForQuery) => Ok(BackendMessage::ReadyForQuery(
+                ReadyForQuery::try_from(&mut raw_message)?,
+            )),
+            Some(BackendMessageKind::RowDescription) => Ok(BackendMessage::RowDescription(
+                RowDescription::try_from(&mut raw_message)?,
+            )),
+            //TODO: what about None?
+            _ => Err(anyhow!(
+                "Unsupported BackendMessage: {:?}",
+                raw_message.get_message_kind()
+            )),
+        }
+    }
+}
+
 /// All the messages sent by the Backend
 #[derive(Debug)]
 pub enum BackendMessageKind {
