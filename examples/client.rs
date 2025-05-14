@@ -20,6 +20,7 @@ fn main() -> anyhow::Result<()> {
 
             handler.md5_authentication_handler()?;
             handler.simple_query_handler()?;
+            //FIXME: Use terminate
             info!("Connection ended");
         }
         Err(e) => {

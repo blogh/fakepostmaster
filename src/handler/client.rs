@@ -36,8 +36,6 @@ impl TcpHandler {
             ],
         ))?;
 
-        // Receive Athentication message from server
-        //let mut raw_message = RawBackendMessage::get(&mut self.tcp_reader)?;
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
         match AuthenticationMD5Password::try_from(&mut raw_message) {
             Ok(message) => {
@@ -52,14 +50,12 @@ impl TcpHandler {
             Err(_) => return Err(anyhow!("AuthenticationMD5Password message expected")),
         }
 
-        // Receive Authentication Ok
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
         match AuthenticationOk::try_from(&mut raw_message) {
             Ok(message) => debug!("rcv: {message:?}"),
             _ => return Err(anyhow!("AuthenticationOk message expected")),
         };
 
-        // ParameterStatus Messages
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
         while let Some(BackendMessageKind::ParameterStatus) = raw_message.get_message_kind() {
             debug!("rcv: {:?}", ParameterStatus::try_from(&mut raw_message)?);
@@ -67,13 +63,11 @@ impl TcpHandler {
             raw_message = self.tcp_reader.get_raw_backend_message()?;
         }
 
-        // BackendKeyData
         match BackendKeyData::try_from(&mut raw_message) {
             Ok(message) => debug!("rcv: {message:?}"),
             _ => return Err(anyhow!("BackendKeyData message expected")),
         }
 
-        // ReadyForQuery
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
         match ReadyForQuery::try_from(&mut raw_message) {
             Ok(message) => debug!("rcv: {message:?}"),
@@ -84,6 +78,14 @@ impl TcpHandler {
     }
 
     pub fn simple_query_handler(&mut self) -> anyhow::Result<()> {
+        //FIXME: This is not a complete implementation
+        //* several queries could be ran in a single query message resulting
+        //  in several RowDesc + DataRow
+        //* queries result in (RowDesc + DataRow + CommandComplete)|Error
+        //* commands result in CommandCompelte|Error
+        //* NoticeResponse should be supported
+        //* use a state machine as proposed by the documentation?
+
         self.tcp_writer
             .put_message_and_flush(Query::new("SELECT 1 as a, 2 as a, 3 as a;".to_string())?)?;
 
