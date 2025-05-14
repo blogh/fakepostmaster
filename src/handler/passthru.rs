@@ -36,55 +36,49 @@ impl TcpHandler {
         debug!("cli (rcv & resent): {sm:?}");
         self.srv_tcp_writer.put_request(sm)?;
 
-        let mut raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
-        match AuthenticationMD5Password::try_from(&mut raw_message) {
-            Ok(message) => {
-                debug!("srv (rcv): {message:?}");
-                self.cli_tcp_writer.put_message_and_flush(message)?;
+        let raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
+        match BackendMessageKind::try_from(&raw_message.kind)? {
+            BackendMessageKind::AuthenticationMD5Password => {
+                self.cli_tcp_writer.put_raw_message_and_flush(raw_message)?;
             }
-            Err(_) => return Err(anyhow!("AuthenticationMD5Password message expected")),
+            _ => return Err(anyhow!("AuthenticationMD5Password message expected")),
         }
 
-        let mut raw_message = self.cli_tcp_reader.get_raw_frontend_message()?;
-        let _password_message = match PasswordMessage::try_from(&mut raw_message) {
-            Ok(message) => {
-                debug!("cli rcv: {message:?}");
-                self.srv_tcp_writer.put_message_and_flush(message)?;
+        let raw_message = self.cli_tcp_reader.get_raw_frontend_message()?;
+        match FrontendMessageKind::try_from(&raw_message.kind)? {
+            FrontendMessageKind::ContextDependant => {
+                self.srv_tcp_writer.put_raw_message_and_flush(raw_message)?
             }
             _ => return Err(anyhow!("Password message expected")),
         };
 
-        let mut raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
-        match AuthenticationOk::try_from(&mut raw_message) {
-            Ok(message) => {
-                debug!("srv rcv: {message:?}");
-                self.cli_tcp_writer.put_message(message)?;
+        let raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
+        match BackendMessageKind::try_from(&raw_message.kind)? {
+            BackendMessageKind::AuthenticationOk => {
+                self.cli_tcp_writer.put_raw_message(raw_message)?;
             }
             _ => return Err(anyhow!("AuthenticationOk message expected")),
         };
 
         let mut raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
-        while let Some(BackendMessageKind::ParameterStatus) = raw_message.get_message_kind() {
-            let message = ParameterStatus::try_from(&mut raw_message)?;
-            debug!("srv rcv: {:?}", message);
-            self.cli_tcp_writer.put_message(message)?;
-
+        while let BackendMessageKind::ParameterStatus =
+            BackendMessageKind::try_from(&raw_message.kind)?
+        {
+            self.cli_tcp_writer.put_raw_message(raw_message)?;
             raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
         }
 
-        match BackendKeyData::try_from(&mut raw_message) {
-            Ok(message) => {
-                debug!("srv rcv: {message:?}");
-                self.cli_tcp_writer.put_message(message)?;
+        match BackendMessageKind::try_from(&raw_message.kind)? {
+            BackendMessageKind::BackendKeyData => {
+                self.cli_tcp_writer.put_raw_message(raw_message)?;
             }
             _ => return Err(anyhow!("BackendKeyData message expected")),
         }
 
-        let mut raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
-        match ReadyForQuery::try_from(&mut raw_message) {
-            Ok(message) => {
-                debug!("srv rcv: {message:?}");
-                self.cli_tcp_writer.put_message_and_flush(message)?;
+        let raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
+        match BackendMessageKind::try_from(&raw_message.kind)? {
+            BackendMessageKind::ReadyForQuery => {
+                self.cli_tcp_writer.put_raw_message_and_flush(raw_message)?;
             }
             _ => return Err(anyhow!("ReadyForQuery message expected")),
         }
@@ -94,19 +88,15 @@ impl TcpHandler {
 
     pub fn simple_query_handler(&mut self) -> anyhow::Result<()> {
         //FIXME: See handler/client.rs
-        //NOTE: As is the perfs are as ugly as can be (+3/5) because we open
-        // all the messages before repackaging them and sending them. This is not
-        // necessary. It was just a trial.
-        let mut raw_message = self.cli_tcp_reader.get_raw_frontend_message()?;
-        match Query::try_from(&mut raw_message) {
-            Ok(message) => {
-                debug!("cli rcv: {message:?}");
-                self.srv_tcp_writer.put_message_and_flush(message)?;
+        let raw_message = self.cli_tcp_reader.get_raw_frontend_message()?;
+        match FrontendMessageKind::try_from(&raw_message.kind)? {
+            FrontendMessageKind::Query => {
+                self.srv_tcp_writer.put_raw_message_and_flush(raw_message)?;
             }
             _ => {
                 return Err(anyhow!(
                     "Query message expected, got {:?}",
-                    raw_message.get_message_kind()
+                    raw_message.kind
                 ));
             }
         };
@@ -114,43 +104,39 @@ impl TcpHandler {
         let mut raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
         // Regular queries have a RowDescription and DataRow(s) but commands
         // like VACUUM dont't
-        if let Ok(message) = RowDescription::try_from(&mut raw_message) {
-            debug!("srv rcv: {message:?}");
-            self.cli_tcp_writer.put_message(message)?;
+        if let BackendMessageKind::RowDescription = BackendMessageKind::try_from(&raw_message.kind)?
+        {
+            self.cli_tcp_writer.put_raw_message(raw_message)?;
 
             raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
-            while let Some(BackendMessageKind::DataRow) = raw_message.get_message_kind() {
-                let message = DataRow::try_from(&mut raw_message).expect("Must be a DataRow");
-                debug!("srv rcv: {message:?}");
-                self.cli_tcp_writer.put_message(message)?;
-
+            while let BackendMessageKind::DataRow = BackendMessageKind::try_from(&raw_message.kind)?
+            {
+                self.cli_tcp_writer.put_raw_message(raw_message)?;
                 raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
             }
         }
 
-        match CommandComplete::try_from(&mut raw_message) {
-            Ok(message) => {
-                debug!("srv rcv: {message:?}");
-                self.cli_tcp_writer.put_message(message)?;
+        match BackendMessageKind::try_from(&raw_message.kind)? {
+            BackendMessageKind::CommandComplete => {
+                self.cli_tcp_writer.put_raw_message(raw_message)?;
             }
             _ => {
                 return Err(anyhow!(
                     "Query message expected, got {:?}",
-                    raw_message.get_message_kind()
+                    raw_message.kind
                 ));
             }
         }
 
-        let mut raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
-        match ReadyForQuery::try_from(&mut raw_message) {
-            Ok(message) => {
-                debug!("rcv: {message:?}");
-                self.cli_tcp_writer.put_message_and_flush(message)?;
+        let raw_message = self.srv_tcp_reader.get_raw_backend_message()?;
+        match BackendMessageKind::try_from(&raw_message.kind)? {
+            BackendMessageKind::ReadyForQuery => {
+                self.cli_tcp_writer.put_raw_message_and_flush(raw_message)?;
             }
             _ => {
                 return Err(anyhow!(
                     "Query message expected, got {:?}",
-                    raw_message.get_message_kind()
+                    raw_message.kind
                 ));
             }
         }

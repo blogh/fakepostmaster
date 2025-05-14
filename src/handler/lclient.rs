@@ -44,8 +44,7 @@ impl TcpHandler {
         // Receive Athentication message from server
         //let mut raw_message = RawBackendMessage::get(&mut self.tcp_reader)?;
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
-        debug!("{:?}", raw_message.get_message_kind());
-        debug!("{:?}", raw_message.get_auth_message_kind());
+        debug!("{:?}", raw_message.kind);
         match AuthenticationMD5Password::try_from(&mut raw_message) {
             Ok(message) => {
                 debug!("rcv: {message:?}");
@@ -68,7 +67,9 @@ impl TcpHandler {
 
         // ParameterStatus Messages
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
-        while let Some(BackendMessageKind::ParameterStatus) = raw_message.get_message_kind() {
+        while let BackendMessageKind::ParameterStatus =
+            BackendMessageKind::try_from(&raw_message.kind)?
+        {
             debug!("rcv: {:?}", ParameterStatus::try_from(&mut raw_message)?);
 
             raw_message = self.tcp_reader.get_raw_backend_message()?;
@@ -118,11 +119,11 @@ impl TcpHandler {
         }
 
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
-        while let Some(BackendMessageKind::CopyData) = raw_message.get_message_kind() {
+        while let BackendMessageKind::CopyData = BackendMessageKind::try_from(&raw_message.kind)? {
             let header = StreamingHeader::deserialize(&mut raw_message.raw_body)?;
             debug!(
                 "rcv: {:?} {:?}",
-                raw_message.get_message_kind().unwrap(),
+                raw_message.kind,
                 StreamingReplicationMessageKind::try_from(header.message_type)?,
             );
 
@@ -165,8 +166,8 @@ impl TcpHandler {
             raw_message = self.tcp_reader.get_raw_backend_message()?;
         }
 
-        let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
-        info!("{:?}", raw_message.get_message_kind());
+        let raw_message = self.tcp_reader.get_raw_backend_message()?;
+        info!("{:?}", raw_message.kind);
 
         Ok(())
     }

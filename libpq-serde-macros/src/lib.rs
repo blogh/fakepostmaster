@@ -198,19 +198,19 @@ fn message_body_derive_macro2(
 }
 
 //----------------------------------------------------------------------------------
-// Derive macro: TryFromRawBackendMessage
+// Derive macro: TryFromRawMessage
 //----------------------------------------------------------------------------------
 
-#[proc_macro_derive(TryFromRawBackendMessage, attributes(message_body))]
-pub fn try_from_raw_backend_message_derive_macro(
+#[proc_macro_derive(TryFromRawMessage, attributes(message_body))]
+pub fn try_from_raw_message_derive_macro(
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    try_from_raw_backend_message_derive_macro2(input.into()) // transform the stream to a procmacro2 one
+    try_from_raw_message_derive_macro2(input.into()) // transform the stream to a procmacro2 one
         .expect("proc macro must return a TokenStream rather than a Result")
         .into() // to fo back proc_macro::TokenStream
 }
 
-fn try_from_raw_backend_message_derive_macro2(
+fn try_from_raw_message_derive_macro2(
     input: proc_macro2::TokenStream,
 ) -> deluxe::Result<proc_macro2::TokenStream> {
     // parse
@@ -224,67 +224,21 @@ fn try_from_raw_backend_message_derive_macro2(
         let ident = &ast.ident;
 
         Ok(quote! {
-            impl TryFrom<&mut RawBackendMessage> for #ident {
+            impl TryFrom<&mut RawMessage> for #ident {
                 type Error = anyhow::Error;
 
-                fn try_from(message: &mut RawBackendMessage) -> anyhow::Result<#ident> {
-                    if #kind as u8 == message.header.message_type {
+                fn try_from(message: &mut RawMessage) -> anyhow::Result<#ident> {
+                    if #kind as u8 == message.kind.main {
                         #ident::deserialize(&mut message.raw_body)
                     } else {
                         Err(anyhow!(
-                            "Impossible to create struct from RawBackendMessage"
+                            "Impossible to create struct from RawMessage"
                         ))
                     }
                 }
             }
         })
     } else {
-        panic!("An unsupported type was given for TryFromRawBackendMessage (supported: struct, enum with one field)");
-    }
-}
-
-//----------------------------------------------------------------------------------
-// Derive macro: TryFromRawFrontendMessage
-//----------------------------------------------------------------------------------
-
-#[proc_macro_derive(TryFromRawFrontendMessage, attributes(message_body))]
-pub fn try_from_raw_frontend_message_derive_macro(
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    try_from_raw_frontend_message_derive_macro2(input.into()) // transform the stream to a procmacro2 one
-        .expect("proc macro must return a TokenStream rather than a Result")
-        .into() // to fo back proc_macro::TokenStream
-}
-
-fn try_from_raw_frontend_message_derive_macro2(
-    input: proc_macro2::TokenStream,
-) -> deluxe::Result<proc_macro2::TokenStream> {
-    // parse
-    let mut ast: DeriveInput = syn::parse2(input)?;
-
-    // Extract the attributes!
-    let MessageBody { kind } = deluxe::extract_attributes(&mut ast)?;
-
-    if let syn::Data::Struct(_) = &mut ast.data {
-        // define impl variables
-        let ident = &ast.ident;
-
-        Ok(quote! {
-            impl TryFrom<&mut RawFrontendMessage> for #ident {
-                type Error = anyhow::Error;
-
-                fn try_from(message: &mut RawFrontendMessage) -> anyhow::Result<#ident> {
-                    if #kind as u8 == message.header.message_type {
-                        #ident::deserialize(&mut message.raw_body)
-                    } else {
-                        Err(anyhow!(
-                            "Impossible to create struct from RawFrontendMessage"
-                        ))
-                    }
-                }
-            }
-        })
-    } else {
-        panic!("An unsupported type was given for TryFromRawFrontendMessage (supported: struct, enum with one field)");
+        panic!("An unsupported type was given for TryFromRawMessage (supported: struct, enum with one field)");
     }
 }

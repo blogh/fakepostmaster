@@ -57,7 +57,9 @@ impl TcpHandler {
         };
 
         let mut raw_message = self.tcp_reader.get_raw_backend_message()?;
-        while let Some(BackendMessageKind::ParameterStatus) = raw_message.get_message_kind() {
+        while let BackendMessageKind::ParameterStatus =
+            BackendMessageKind::try_from(&raw_message.kind)?
+        {
             debug!("rcv: {:?}", ParameterStatus::try_from(&mut raw_message)?);
 
             raw_message = self.tcp_reader.get_raw_backend_message()?;

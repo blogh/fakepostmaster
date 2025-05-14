@@ -16,17 +16,18 @@ use libpq_serde_types::{ByteSized, Deserialize, Serialize};
 use crate::message::*;
 
 trait LibPqReader: Read {
-    fn get_raw_backend_message(&mut self) -> anyhow::Result<RawBackendMessage>;
-    fn get_raw_frontend_message(&mut self) -> anyhow::Result<RawFrontendMessage>;
+    fn get_raw_backend_message(&mut self) -> anyhow::Result<RawMessage>;
+    fn get_raw_frontend_message(&mut self) -> anyhow::Result<RawMessage>;
 }
 
 impl<T> LibPqReader for BufReader<T>
 where
     T: Read,
 {
-    fn get_raw_backend_message(&mut self) -> anyhow::Result<RawBackendMessage> {
-        let mut raw_message = RawBackendMessage::get(self)?;
-        if let Some(BackendMessageKind::ErrorResponse) = raw_message.get_message_kind() {
+    fn get_raw_backend_message(&mut self) -> anyhow::Result<RawMessage> {
+        let mut raw_message = RawMessage::get(self)?;
+        if let BackendMessageKind::ErrorResponse = BackendMessageKind::try_from(&raw_message.kind)?
+        {
             let error = ErrorResponse::try_from(&mut raw_message)?;
             //FIXME:
             error!("{error:?}");
@@ -36,12 +37,15 @@ where
         }
     }
 
-    fn get_raw_frontend_message(&mut self) -> anyhow::Result<RawFrontendMessage> {
-        Ok(RawFrontendMessage::get(self)?)
+    fn get_raw_frontend_message(&mut self) -> anyhow::Result<RawMessage> {
+        Ok(RawMessage::get(self)?)
     }
 }
 
 trait LibPqWriter: Write {
+    fn put_raw_message(&mut self, msg: RawMessage) -> anyhow::Result<()>;
+    fn put_raw_message_and_flush(&mut self, msg: RawMessage) -> anyhow::Result<()>;
+
     fn put_message<U>(&mut self, msg: U) -> anyhow::Result<()>
     where
         U: MessageBody + Serialize + ByteSized + std::fmt::Debug;
@@ -59,6 +63,19 @@ impl<T> LibPqWriter for BufWriter<T>
 where
     T: Write,
 {
+    fn put_raw_message(&mut self, msg: RawMessage) -> anyhow::Result<()> {
+        self.write(&msg.raw_header)?;
+        self.write(&msg.raw_body)?;
+        Ok(())
+    }
+
+    fn put_raw_message_and_flush(&mut self, msg: RawMessage) -> anyhow::Result<()> {
+        self.write(&msg.raw_header)?;
+        self.write(&msg.raw_body)?;
+        self.flush()?;
+        Ok(())
+    }
+
     fn put_message<U>(&mut self, msg: U) -> anyhow::Result<()>
     where
         U: MessageBody + Serialize + ByteSized + std::fmt::Debug,
