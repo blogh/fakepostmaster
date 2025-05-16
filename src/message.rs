@@ -68,7 +68,7 @@ impl RawRequest {
 }
 
 /// All the requests sent by the frontend
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RequestMessageKind {
     StartupMessage,
     CancelRequest,
@@ -413,7 +413,7 @@ impl TryFrom<&RawMessageKind> for FrontendMessageKind {
 //*----------------------------------------------------------------------------
 
 /// All the messages sent by the Backend
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BackendMessageKind {
     Authentication, //FIXME: Remove?
     AuthenticationOk,
@@ -586,7 +586,7 @@ impl TryFrom<i32> for AuthenticationMessageKind {
 // FrontendMessage
 //*----------------------------------------------------------------------------
 /// All the messages sent by the Frontend
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FrontendMessageKind {
     Bind,                // B
     Close,               // C

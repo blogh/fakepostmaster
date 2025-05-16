@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.98"
 bytes = "1.10.1"
+clap = { version = "4.5.38", features = ["derive"] }
 libpq-serde-macros = { version = "0.1.0", path = "libpq-serde-macros" }
 libpq-serde-types = { version = "0.1.0", path = "libpq-serde-types" }
 md-5 = "0.10.6"
