@@ -152,6 +152,7 @@ impl std::fmt::Debug for RawMessageKind {
     }
 }
 
+#[derive(Clone)]
 pub struct RawMessage {
     pub kind: RawMessageKind,
     pub raw_header: Bytes,
@@ -1157,11 +1158,11 @@ pub struct NoticeResponse {
 // * Int32 Length of message contents in bytes, including self.
 // * String The name of the run-time parameter being reported.
 // * String The current value of the parameter.
-#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody, TryFromRawMessage)]
+#[derive(Debug, Clone, PartialEq, SerdeLibpqData, MessageBody, TryFromRawMessage)]
 #[message_body(kind = 'S')]
 pub struct ParameterStatus {
-    name: CString,
-    value: CString,
+    pub name: CString,
+    pub value: CString,
 }
 
 impl ParameterStatus {
