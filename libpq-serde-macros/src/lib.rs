@@ -232,7 +232,7 @@ fn try_from_raw_message_derive_macro2(
                         #ident::deserialize(&mut message.raw_body)
                     } else {
                         Err(anyhow!(
-                            "Impossible to create struct from RawMessage"
+                            "Impossible to create struct from RawMessage: {:?}", message.kind
                         ))
                     }
                 }
