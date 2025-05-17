@@ -136,17 +136,39 @@ pub trait MessageBody {
     fn message_type(&self) -> u8;
 }
 
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct RawMessageKind {
     pub main: u8,
     pub auth: Option<i32>,
 }
 
-#[derive(Debug)]
+impl std::fmt::Debug for RawMessageKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "RawMessageKind {{ main: 0x{:x?}, auth: {:?} }}",
+            self.main, self.auth
+        )
+    }
+}
+
 pub struct RawMessage {
     pub kind: RawMessageKind,
     pub raw_header: Bytes,
     pub raw_body: Bytes,
+}
+
+impl std::fmt::Debug for RawMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "RawMessage {{ kind: {:?}, raw_header: hex{:x?}, raw_body hex{:x?} txt{:?} }}",
+            self.kind,
+            self.raw_header.to_vec(),
+            self.raw_body.to_vec(),
+            self.raw_body
+        )
+    }
 }
 
 impl RawMessage {
