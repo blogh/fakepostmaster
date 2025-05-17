@@ -1,12 +1,14 @@
 use std::net::{TcpListener, TcpStream};
+use std::thread;
 use tracing::*;
 use tracing_subscriber;
 
-use fakepostmaster::handler::passthru::TcpHandler;
+use fakepostmaster::handler::passthru::*;
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
+        .with_thread_ids(true)
         .compact()
         .init();
 
@@ -17,25 +19,32 @@ fn main() -> anyhow::Result<()> {
         match cli_stream {
             Ok(cli_stream) => {
                 info!("Accepted new connection from client");
-
-                info!("Connecting to server: pgsrv:5435...");
-                match TcpStream::connect("pgsrv:5435") {
-                    Ok(srv_stream) => {
-                        info!("Connection established");
-                        let mut handler = TcpHandler::new(srv_stream, cli_stream)?;
-                        let _connection_parameters = handler.md5_authentication_handler()?;
-                        loop {
-                            //FIXME: with thiserror exit when appropriate
-                            if handler.simple_query_handler().is_err() {
-                                break;
-                            }
+                thread::spawn(|| {
+                    info!("Connecting to server: pgsrv:5432...");
+                    match TcpStream::connect("pgsrv:5432") {
+                        Ok(srv_stream) => {
+                            info!("Connection established");
+                            match PassThruMachine::connect(srv_stream, cli_stream) {
+                                Ok(mut handler) => loop {
+                                    match handler.next() {
+                                        Ok(Context::Disconnected) => break,
+                                        Ok(_) => (),
+                                        Err(e) => {
+                                            error!("{e}");
+                                            break;
+                                        }
+                                    }
+                                },
+                                Err(e) => {
+                                    error!("{e}");
+                                }
+                            };
                         }
-                        info!("Connection ended");
+                        Err(e) => {
+                            error!("error: {}", e);
+                        }
                     }
-                    Err(e) => {
-                        println!("error: {}", e);
-                    }
-                }
+                });
             }
             Err(e) => {
                 error!("error: {}", e);
