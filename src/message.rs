@@ -878,11 +878,19 @@ pub struct CopyData {}
 // CopyDone (F & B)
 // * Byte1('c') Identifies the message as a COPY-complete indicator.
 // * Int32(4) Length of message contents in bytes, including self.
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody, TryFromRawMessage)]
+#[message_body(kind = 'c')]
+pub struct CopyDone {}
 
 // CopyFail (F)
 // * Byte1('f') Identifies the message as a COPY-failure indicator.
 // * Int32 Length of message contents in bytes, including self.
 // * String An error message to report as the cause of failure.
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody, TryFromRawMessage)]
+#[message_body(kind = 'f')]
+pub struct CopyFail {
+    pub error_message: CString,
+}
 
 // CopyInResponse (B)
 // * Byte1('G') Identifies the message as a Start Copy In response. The frontend must now send copy-in
@@ -895,6 +903,12 @@ pub struct CopyData {}
 // * Int16 The number of columns in the data to be copied (denoted N below).
 // * Int16[N] The format codes to be used for each column. Each must presently be zero (text) or one
 //     (binary). All must be zero if the overall copy format is textual.
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody, TryFromRawMessage)]
+#[message_body(kind = 'H')]
+pub struct CopyInResponse {
+    pub copy_format: i8,
+    pub column_format_code: Vec16<Byte>,
+}
 
 // CopyOutResponse (B)
 // * Byte1('H') Identifies the message as a Start Copy Out response. This message will be followed by
@@ -907,6 +921,12 @@ pub struct CopyData {}
 // * Int16 The number of columns in the data to be copied (denoted N below).
 // * Int16[N] The format codes to be used for each column. Each must presently be zero (text) or one
 //   (binary). All must be zero if the overall copy format is textual.
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody, TryFromRawMessage)]
+#[message_body(kind = 'H')]
+pub struct CopyOutResponse {
+    pub copy_format: i8,
+    pub column_format_code: Vec16<Byte>,
+}
 
 // CopyBothResponse (B)
 // * Byte1('W') Identifies the message as a Start Copy Both response. This message
@@ -1088,6 +1108,11 @@ impl ErrorMessage {
 // follows. The presently defined field types are listed in Section 53.8. Since more field types might
 // be added in future, frontends should silently ignore fields of unrecognized type.
 // * String The field value.
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody, TryFromRawMessage)]
+#[message_body(kind = 'N')]
+pub struct NoticeResponse {
+    pub messages: VecNull<ErrorMessage>,
+}
 
 // NotificationResponse (B)
 // * Byte1('A') Identifies the message as a notification response.

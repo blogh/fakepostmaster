@@ -1,7 +1,9 @@
 use anyhow::anyhow;
 use bytes::Bytes;
-use libpq_serde_macros::SerdeLibpqData;
+use libpq_serde_macros::{MessageBody, SerdeLibpqData};
 use libpq_serde_types::{ByteSized, Deserialize, Serialize, libpq_types::Byte};
+
+use crate::message::MessageBody;
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct StreamingHeader {
@@ -63,11 +65,12 @@ impl TryFrom<i8> for StreamingReplicationMessageKind {
 // page boundary, and is therefore already split using continuation records, it can be split at the
 // page boundary. In other words, the first main WAL record and its continuation records can be sent
 // in different XLogData messages.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'w')]
 pub struct XLogData {
-    wal_data_start: i64,
-    end_of_wal: i64,
-    timestamp: i64,
+    pub wal_data_start: i64,
+    pub end_of_wal: i64,
+    pub timestamp: i64,
     //NOTE: The wal data stream is implemented as a logical message
 }
 
@@ -81,11 +84,12 @@ pub struct XLogData {
 //
 // The receiving process can send replies back to the sender at any time, using one of the following
 // message formats (also in the payload of a CopyData message):
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'k')]
 pub struct PrimaryKeepAliveMessage {
-    end_of_wal: i64,
-    timestamp: i64,
-    urgency: Byte,
+    pub end_of_wal: i64,
+    pub timestamp: i64,
+    pub urgency: Byte,
 }
 
 // Standby status update (F)
@@ -97,13 +101,14 @@ pub struct PrimaryKeepAliveMessage {
 //   2000-01-01.
 // * Byte1 If 1, the client requests the server to reply to this message immediately. This can be used
 //   to ping the server, to test if the connection is still healthy.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'r')]
 pub struct StandbyStatusUpdate {
-    reveived_lsn: i64,
-    flush_lsn: i64,
-    applied_lsn: i64,
-    timestamp: i64,
-    urgency: Byte,
+    pub reveived_lsn: i64,
+    pub flush_lsn: i64,
+    pub applied_lsn: i64,
+    pub timestamp: i64,
+    pub urgency: Byte,
 }
 
 // Hot standby feedback message (F)
@@ -118,10 +123,11 @@ pub struct StandbyStatusUpdate {
 // * Int32 The lowest catalog_xmin of any replication slots on the standby. Set to 0 if no catalog_xmin
 //   exists on the standby or if hot standby feedback is being disabled.
 // * Int32 The epoch of the catalog_xmin xid on the standby.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'h')]
 pub struct HotStandbyFeedBackMessage {
-    xmin: i32,
-    xmin_xid_epoch: i32,
-    lowest_xmin: i32,
-    lowest_xmin_epoch: i32,
+    pub xmin: i32,
+    pub xmin_xid_epoch: i32,
+    pub lowest_xmin: i32,
+    pub lowest_xmin_epoch: i32,
 }
