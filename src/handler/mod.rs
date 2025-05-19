@@ -19,20 +19,15 @@ trait LibPqReader: Read {
 
 impl LibPqReader for TcpStream {
     fn get_raw_backend_message(&mut self) -> anyhow::Result<RawMessage> {
-        let mut raw_message = RawMessage::get(self)?;
-        if let BackendMessageKind::ErrorResponse = BackendMessageKind::try_from(&raw_message.kind)?
-        {
-            let error = ErrorResponse::try_from(&mut raw_message)?;
-            //FIXME:
-            error!("{error:?}");
-            Err(anyhow!("Error"))
-        } else {
-            Ok(raw_message)
-        }
+        let raw_message = RawMessage::get(self)?;
+        debug!("{:?}", BackendMessageKind::try_from(&raw_message.kind)?);
+        Ok(raw_message)
     }
 
     fn get_raw_frontend_message(&mut self) -> anyhow::Result<RawMessage> {
-        Ok(RawMessage::get(self)?)
+        let raw_message = RawMessage::get(self)?;
+        debug!("{:?}", FrontendMessageKind::try_from(&raw_message.kind)?);
+        Ok(raw_message)
     }
 }
 
