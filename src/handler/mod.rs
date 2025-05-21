@@ -1,17 +1,14 @@
 pub mod client;
-pub mod lclient;
 pub mod passthru;
-pub mod server;
+//pub mod server;
 
-use anyhow::anyhow;
-use bytes::{BufMut, Bytes, BytesMut};
-use std::io::{BufReader, BufWriter, Read, Write};
+use bytes::{BufMut, BytesMut};
+use std::io::{Read, Write};
 use std::net::TcpStream;
 
 use tracing::*;
-use tracing_subscriber;
 
-use libpq_serde_types::{ByteSized, Deserialize, Serialize};
+use libpq_serde_types::{ByteSized, Serialize};
 
 use crate::message::*;
 
@@ -20,10 +17,7 @@ trait LibPqReader: Read {
     fn get_raw_frontend_message(&mut self) -> anyhow::Result<RawMessage>;
 }
 
-impl<T> LibPqReader for BufReader<T>
-where
-    T: Read,
-{
+impl LibPqReader for TcpStream {
     fn get_raw_backend_message(&mut self) -> anyhow::Result<RawMessage> {
         let mut raw_message = RawMessage::get(self)?;
         if let BackendMessageKind::ErrorResponse = BackendMessageKind::try_from(&raw_message.kind)?
@@ -44,13 +38,8 @@ where
 
 trait LibPqWriter: Write {
     fn put_raw_message(&mut self, msg: RawMessage) -> anyhow::Result<()>;
-    fn put_raw_message_and_flush(&mut self, msg: RawMessage) -> anyhow::Result<()>;
 
     fn put_message<U>(&mut self, msg: U) -> anyhow::Result<()>
-    where
-        U: MessageBody + Serialize + ByteSized + std::fmt::Debug;
-
-    fn put_message_and_flush<U>(&mut self, msg: U) -> anyhow::Result<()>
     where
         U: MessageBody + Serialize + ByteSized + std::fmt::Debug;
 
@@ -59,20 +48,10 @@ trait LibPqWriter: Write {
         U: RequestBody + Serialize + ByteSized + std::fmt::Debug;
 }
 
-impl<T> LibPqWriter for BufWriter<T>
-where
-    T: Write,
-{
+impl LibPqWriter for TcpStream {
     fn put_raw_message(&mut self, msg: RawMessage) -> anyhow::Result<()> {
         self.write(&msg.raw_header)?;
         self.write(&msg.raw_body)?;
-        Ok(())
-    }
-
-    fn put_raw_message_and_flush(&mut self, msg: RawMessage) -> anyhow::Result<()> {
-        self.write(&msg.raw_header)?;
-        self.write(&msg.raw_body)?;
-        self.flush()?;
         Ok(())
     }
 
@@ -86,16 +65,6 @@ where
         MessageHeader::new_raw_header_from_body(&mut buffer, &msg);
         msg.serialize(&mut buffer);
         self.write(&buffer)?;
-
-        Ok(())
-    }
-
-    fn put_message_and_flush<U>(&mut self, msg: U) -> anyhow::Result<()>
-    where
-        U: MessageBody + Serialize + ByteSized + std::fmt::Debug,
-    {
-        self.put_message(msg)?;
-        self.flush()?;
 
         Ok(())
     }

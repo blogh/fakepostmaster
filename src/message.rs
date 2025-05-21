@@ -7,7 +7,8 @@ use libpq_serde_types::{
 };
 use md5::{Digest, Md5};
 use std::ffi::CString;
-use std::io::{BufReader, Read};
+use std::io::Read;
+use std::net::TcpStream;
 
 // The list of messages can be found here and has been copied below (v17):
 // * https://www.postgresql.org/docs/17/protocol-flow.html
@@ -41,17 +42,16 @@ pub struct RawRequest {
 }
 
 impl RawRequest {
-    pub fn get<T>(buffered_reader: &mut BufReader<T>) -> anyhow::Result<Self>
+    pub fn get(read_stream: &mut TcpStream) -> anyhow::Result<Self>
     where
-        T: Read,
         Self: Sized,
     {
         let mut buffer = vec![0_u8; 4];
-        buffered_reader.read_exact(&mut buffer)?;
+        read_stream.read_exact(&mut buffer)?;
         let header = RequestHeader::deserialize(&mut Bytes::from(buffer))?;
 
         let mut buffer = vec![0_u8; (header.length - 4) as usize];
-        buffered_reader.read_exact(&mut buffer)?;
+        read_stream.read_exact(&mut buffer)?;
         let raw_body = Bytes::from(buffer);
 
         let mut msg_kind = [0_u8; 4];
@@ -150,17 +150,14 @@ pub struct RawMessage {
 }
 
 impl RawMessage {
-    pub fn get<T>(buffered_reader: &mut BufReader<T>) -> anyhow::Result<Self>
-    where
-        T: Read,
-    {
+    pub fn get(read_stream: &mut TcpStream) -> anyhow::Result<Self> {
         let mut buffer = vec![0_u8; 4 + 1];
-        buffered_reader.read_exact(&mut buffer)?;
+        read_stream.read_exact(&mut buffer)?;
         let raw_header = Bytes::from(buffer.clone());
         let header = MessageHeader::deserialize(&mut Bytes::from(buffer))?;
 
         let mut buffer = vec![0_u8; (header.length - 4) as usize];
-        buffered_reader.read_exact(&mut buffer)?;
+        read_stream.read_exact(&mut buffer)?;
         let raw_body = Bytes::from(buffer);
 
         let auth_kind = match header.message_type {
