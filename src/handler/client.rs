@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::ffi::CString;
 use std::net::TcpStream;
 use tracing::*;
 
@@ -54,6 +56,8 @@ pub struct ClientMachine {
     application_name: String,
     query: Vec<String>,
     streaming_data: Option<StreamingData>,
+    client_parameters: HashMap<String, String>,
+    server_parameters: HashMap<String, String>,
 }
 
 impl ClientMachine {
@@ -74,7 +78,7 @@ impl ClientMachine {
         let mut query = query;
         query.reverse();
 
-        tcp_stream.put_request(StartupMessage::new(
+        let startup_message = StartupMessage::new(
             ProtocolVersion { major: 3, minor: 0 },
             vec![
                 ParameterStatus::new(&(String::from("user")), &user)?,
@@ -83,7 +87,9 @@ impl ClientMachine {
                 ParameterStatus::new(&(String::from("replication")), &replication)?,
                 ParameterStatus::new(&(String::from("client_encoding")), &(String::from("utf8")))?,
             ],
-        ))?;
+        );
+        let client_parameters = HashMap::<String, String>::try_from(&startup_message)?;
+        tcp_stream.put_request(startup_message);
 
         Ok(Self {
             last_message_kind: None,
@@ -95,6 +101,8 @@ impl ClientMachine {
             application_name,
             query,
             streaming_data: None,
+            client_parameters,
+            server_parameters: HashMap::<String, String>::new(),
         })
     }
 
@@ -129,9 +137,11 @@ impl ClientMachine {
                 Message::Backend(BackendMessageKind::BackendKeyData),
                 Context::Authentication,
             ) => {
-                // do something with the data
                 let message = BackendKeyData::try_from(&mut raw_message)?;
-                debug!("DETAIL: {message:?}");
+                self.server_parameters
+                    .insert("process_id".to_string(), message.process_id.to_string());
+                self.server_parameters
+                    .insert("secret_key".to_string(), message.secret_key.to_string());
             }
 
             // ReadyForQuery could be received from the authentication context or the query
@@ -292,6 +302,8 @@ impl ClientMachine {
                 //TODO: store or update parameters
                 let message = ParameterStatus::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:?}");
+                self.server_parameters
+                    .insert(message.name.into_string()?, message.value.into_string()?);
             }
 
             // In Authentication context, ErrorResponse is followed by a deconnection

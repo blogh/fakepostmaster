@@ -6,6 +6,7 @@ use libpq_serde_types::{
     libpq_types::{Byte, Byte4, Vec16, Vec32, VecNull},
 };
 use md5::{Digest, Md5};
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::io::Read;
 use std::net::TcpStream;
@@ -1456,7 +1457,7 @@ impl PgType {
 //     command-line arguments if any) and will act as session defaults.
 //
 // * String The parameter value.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, Clone, PartialEq, SerdeLibpqData)]
 pub struct StartupMessage {
     pub protocol_version: ProtocolVersion,
     pub parameters: VecNull<ParameterStatus>,
@@ -1487,7 +1488,23 @@ impl TryFrom<&mut RawRequest> for StartupMessage {
     }
 }
 
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+impl TryFrom<&StartupMessage> for HashMap<String, String> {
+    type Error = anyhow::Error;
+    fn try_from(startup_message: &StartupMessage) -> anyhow::Result<HashMap<String, String>> {
+        let mut hashmap: HashMap<String, String> = HashMap::new();
+        //FIXME: we could avoid this if iter was implemented on VecNull
+        let parameters: Vec<ParameterStatus> = startup_message.parameters.clone().into();
+        for parameter in parameters {
+            hashmap.insert(
+                parameter.name.clone().into_string()?,
+                parameter.value.clone().into_string()?,
+            );
+        }
+        Ok(hashmap)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, SerdeLibpqData)]
 pub struct ProtocolVersion {
     pub major: i16,
     pub minor: i16,

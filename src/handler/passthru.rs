@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::ffi::CString;
 use std::io::ErrorKind;
 use std::net::TcpStream;
 use std::time::Duration;
@@ -58,6 +60,8 @@ pub struct PassThruMachine {
     user: Option<String>,
     database: Option<String>,
     application_name: Option<String>,
+    client_parameters: HashMap<String, String>,
+    server_parameters: HashMap<String, String>,
 }
 
 impl PassThruMachine {
@@ -66,8 +70,9 @@ impl PassThruMachine {
         //fe_stream.set_read_timeout(Some(Duration::from_millis(100)))?;
 
         //TODO: extract parameter data
-        let startup_message = StartupMessage::try_from(&mut RawRequest::get(&mut fe_stream)?)?;
-        be_stream.put_request(startup_message)?;
+        let raw_startup_request = StartupMessage::try_from(&mut RawRequest::get(&mut fe_stream)?)?;
+        let startup_message = StartupMessage::from(raw_startup_request.clone());
+        be_stream.put_request(raw_startup_request)?;
 
         //FIXME:replace the expects
         Ok(Self {
@@ -79,6 +84,8 @@ impl PassThruMachine {
             user: None,
             database: None,
             application_name: None,
+            client_parameters: HashMap::<String, String>::try_from(&startup_message)?,
+            server_parameters: HashMap::<String, String>::new(),
         })
     }
 
@@ -123,7 +130,11 @@ impl PassThruMachine {
                 Message::Backend(BackendMessageKind::BackendKeyData),
                 Context::Authentication,
             ) => {
-                //TODO: Store this data
+                let message = BackendKeyData::try_from(&mut raw_message.clone())?;
+                self.server_parameters
+                    .insert("process_id".to_string(), message.process_id.to_string());
+                self.server_parameters
+                    .insert("secret_key".to_string(), message.secret_key.to_string());
                 self.fe_stream.put_raw_message(raw_message)?;
             }
 
@@ -296,6 +307,8 @@ impl PassThruMachine {
             (Some(_), Message::Backend(BackendMessageKind::ParameterStatus), _) => {
                 let message = ParameterStatus::try_from(&mut raw_message.clone())?;
                 debug!("DETAIL: {message:?}");
+                self.server_parameters
+                    .insert(message.name.into_string()?, message.value.into_string()?);
                 self.fe_stream.put_raw_message(raw_message)?;
                 // No state change
             }
