@@ -235,7 +235,7 @@ impl ByteSized for CString {
 
 //--------------------------------------------------------------------------------
 /// An array where the length is encoded on 16 bit
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Vec16<T>(Vec<T>);
 
 impl<T> Vec16<T> {
@@ -310,7 +310,7 @@ where
 //--------------------------------------------------------------------------------
 //TODO: when it works implement from []
 /// An array where the length is encoded on 32 bit
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Vec32<T>(Vec<T>);
 
 impl<T> Vec32<T> {
@@ -386,7 +386,7 @@ where
 /// a precise count of them. It's ended byt a 0x00 byte and is assumed to
 /// occupy the full buffer.
 //TODO: when it works implement from []
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VecNull<T>(Vec<T>);
 
 impl<T> VecNull<T> {
