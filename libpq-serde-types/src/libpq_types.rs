@@ -486,6 +486,36 @@ where
     }
 }
 
+//--------------------------------------------------------------------------------
+// Implement BytesArray
+//--------------------------------------------------------------------------------
+
+impl Serialize for Bytes {
+    fn serialize(&self, buffer: &mut BytesMut) {
+        (self.len() as i32).serialize(buffer);
+        buffer.put_slice(&self.slice(0..self.len()));
+    }
+}
+
+impl Deserialize for Bytes {
+    fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+        Bytes: Buf,
+    {
+        let len = buffer.try_get_i32()?;
+        let mut v = vec![0_u8; len as usize];
+        v.copy_from_slice(buffer);
+        Ok(Bytes::from(v))
+    }
+}
+
+impl ByteSized for Bytes {
+    fn byte_size(&self) -> i32 {
+        (self.len() + 4) as i32
+    }
+}
+
 //TODO:int array => Intn[k]
 
 //--------------------------------------------------------------------------------
@@ -1168,6 +1198,39 @@ mod test {
     fn optionvec32_some_byte_size() -> anyhow::Result<()> {
         let o: Option<VecWithEncoding<i32, Length32>> = Some(VecWithEncoding::from(vec![0_i32]));
         assert_eq!(8, o.byte_size());
+        Ok(())
+    }
+
+    //----------------------------------------------------------------------------
+    #[test]
+    fn bytes_deserialize() -> anyhow::Result<()> {
+        let mut buffer =
+            Bytes::from_static(&[0x00, 0x00, 0x00, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05]);
+        assert_eq!(
+            Bytes::from(vec![1, 2, 3, 4, 5]),
+            Bytes::deserialize(&mut buffer)?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bytes_serialize() -> anyhow::Result<()> {
+        let mut m = BytesMut::new();
+        let v = Bytes::from_static(&[1_u8, 2, 3, 4, 5]);
+        v.serialize(&mut m);
+        assert_eq!(
+            vec![0x00, 0x00, 0x00, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05,],
+            m.to_vec()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bytes_bytes_size() -> anyhow::Result<()> {
+        let mut m = BytesMut::new();
+        let v = Bytes::from_static(&[1_u8, 2, 3, 4, 5]);
+        v.serialize(&mut m);
+        assert_eq!(9, v.byte_size());
         Ok(())
     }
 }
