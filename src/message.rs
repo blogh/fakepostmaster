@@ -3,7 +3,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use libpq_serde_macros::{MessageBody, SerdeLibpqData, TryFromRawMessage};
 use libpq_serde_types::{
     ByteSized, Deserialize, Serialize,
-    libpq_types::{Byte, Byte4, Vec16, Vec32, VecNull},
+    libpq_types::{Byte, Byte4, Length16, Length32, NullLength, VecWithEncoding},
 };
 use md5::{Digest, Md5};
 use std::collections::HashMap;
@@ -931,7 +931,7 @@ pub struct CopyFail {
 #[message_body(kind = 'H')]
 pub struct CopyInResponse {
     pub copy_format: i8,
-    pub column_format_code: Vec16<Byte>,
+    pub column_format_code: VecWithEncoding<Byte, Length16>,
 }
 
 // CopyOutResponse (B)
@@ -949,7 +949,7 @@ pub struct CopyInResponse {
 #[message_body(kind = 'H')]
 pub struct CopyOutResponse {
     pub copy_format: i8,
-    pub column_format_code: Vec16<Byte>,
+    pub column_format_code: VecWithEncoding<Byte, Length16>,
 }
 
 // CopyBothResponse (B)
@@ -967,7 +967,7 @@ pub struct CopyOutResponse {
 #[message_body(kind = 'W')]
 pub struct CopyBothResponse {
     pub copy_format: i8,
-    pub format_code: Vec16<Byte>,
+    pub format_code: VecWithEncoding<Byte, Length16>,
 }
 
 // DataRow (B)
@@ -983,7 +983,7 @@ pub struct CopyBothResponse {
 #[message_body(kind = 'D')]
 pub struct DataRow {
     // The serialization will create a length field
-    pub columns: Vec16<ColumnData>,
+    pub columns: VecWithEncoding<ColumnData, Length16>,
 }
 
 impl DataRow {
@@ -994,7 +994,7 @@ impl DataRow {
     }
 }
 
-pub type ColumnData = Option<Vec32<Byte>>;
+pub type ColumnData = Option<VecWithEncoding<Byte, Length32>>;
 
 // Describe (F)
 // * Byte1('D') Identifies the message as a Describe command.
@@ -1023,7 +1023,7 @@ pub type ColumnData = Option<Vec32<Byte>>;
 #[message_body(kind = 'E')]
 pub struct ErrorResponse {
     // The serialization will create a length field
-    pub messages: VecNull<ErrorMessage>,
+    pub messages: VecWithEncoding<ErrorMessage, NullLength>,
 }
 
 impl ErrorResponse {
@@ -1135,7 +1135,7 @@ impl ErrorMessage {
 #[derive(Debug, PartialEq, SerdeLibpqData, MessageBody, TryFromRawMessage)]
 #[message_body(kind = 'N')]
 pub struct NoticeResponse {
-    pub messages: VecNull<ErrorMessage>,
+    pub messages: VecWithEncoding<ErrorMessage, NullLength>,
 }
 
 // NotificationResponse (B)
@@ -1324,7 +1324,7 @@ impl From<&TransactionIndicator> for Byte {
 #[message_body(kind = 'T')]
 pub struct RowDescription {
     // The serialization will create a length field
-    pub columns: Vec16<ColumnDescription>,
+    pub columns: VecWithEncoding<ColumnDescription, Length16>,
 }
 
 impl RowDescription {
@@ -1460,7 +1460,7 @@ impl PgType {
 #[derive(Debug, Clone, PartialEq, SerdeLibpqData)]
 pub struct StartupMessage {
     pub protocol_version: ProtocolVersion,
-    pub parameters: VecNull<ParameterStatus>,
+    pub parameters: VecWithEncoding<ParameterStatus, NullLength>,
 }
 
 impl StartupMessage {
@@ -1492,9 +1492,7 @@ impl TryFrom<&StartupMessage> for HashMap<String, String> {
     type Error = anyhow::Error;
     fn try_from(startup_message: &StartupMessage) -> anyhow::Result<HashMap<String, String>> {
         let mut hashmap: HashMap<String, String> = HashMap::new();
-        //FIXME: we could avoid this if iter was implemented on VecNull
-        let parameters: Vec<ParameterStatus> = startup_message.parameters.clone().into();
-        for parameter in parameters {
+        for parameter in &startup_message.parameters {
             hashmap.insert(
                 parameter.name.clone().into_string()?,
                 parameter.value.clone().into_string()?,
@@ -1572,7 +1570,7 @@ mod test {
         // 0x0060:  0000 00
 
         //FIXME: I should use ColumnData
-        let m = DataRow::new(Vec::<ColumnData>::from([Some(Vec32::new())]));
+        let m = DataRow::new(Vec::<ColumnData>::from([Some(VecWithEncoding::new())]));
         let h = MessageHeader {
             message_type: 'D' as u8,
             length: 4 + m.byte_size(),
@@ -1598,7 +1596,9 @@ mod test {
 
         //FIXME: I should use ColumnData
         let col_data = Vec::<Byte>::from(['1' as u8]);
-        let m = DataRow::new(Vec::<ColumnData>::from([Some(Vec32::from(col_data))]));
+        let m = DataRow::new(Vec::<ColumnData>::from([Some(VecWithEncoding::from(
+            col_data,
+        ))]));
         let h = MessageHeader {
             message_type: 'D' as u8,
             length: 4 + m.byte_size(),

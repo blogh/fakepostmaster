@@ -31,8 +31,8 @@ mod tests {
         int_16: i16,
         int_32: i32,
         cstring: CString,
-        vec16_cstring: Vec16<CString>,
-        vec32_bytes: Vec32<Byte>,
+        vec16_cstring: VecWithEncoding<CString, Length16>,
+        vec32_bytes: VecWithEncoding<Byte, Length32>,
     }
 
     fn example_struct() -> AllTypes {
@@ -61,12 +61,12 @@ mod tests {
         CString::new("aldabis")
             .expect("No 0x00 in string")
             .serialize(&mut m);
-        Vec16::<CString>::from(vec![
+        VecWithEncoding::<CString, Length16>::from(vec![
             CString::new("aldabis").expect("There is no 0x00 inside"),
             CString::new("aldabis").expect("There is no 0x00 inside"),
         ])
         .serialize(&mut m);
-        Vec32::<Byte>::from(vec![0x01, 0x02]).serialize(&mut m);
+        VecWithEncoding::<Byte, Length32>::from(vec![0x01, 0x02]).serialize(&mut m);
 
         m
     }

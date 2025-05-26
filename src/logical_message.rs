@@ -3,7 +3,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use libpq_serde_macros::SerdeLibpqData;
 use libpq_serde_types::{
     ByteSized, Deserialize, Serialize,
-    libpq_types::{Byte, Vec16, Vec32},
+    libpq_types::{Byte, Length16, Length32, VecWithEncoding},
 };
 use std::ffi::CString;
 
@@ -129,7 +129,7 @@ pub struct Message {
     pub is_txn: i8,
     pub lsn: i64,
     pub prefix: CString,
-    pub message: Vec32<Byte>,
+    pub message: VecWithEncoding<Byte, Length32>,
 }
 
 // Commit
@@ -182,7 +182,7 @@ pub struct Relation {
     pub namespace: CString,
     pub relname: CString,
     pub replica_identity: i8,
-    pub columns: Vec16<ColumnDescription>,
+    pub columns: VecWithEncoding<ColumnDescription, Length16>,
 }
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
@@ -292,7 +292,7 @@ pub struct Truncate {
     pub rel_cnt: i32,
     pub flag: i8,
     //FIXME: The encoding is wrong here
-    pub relations: Vec32<i32>,
+    pub relations: VecWithEncoding<i32, Length32>,
 }
 
 // Stream Start
@@ -409,11 +409,11 @@ pub struct StreamAbort {
 //   format byte). n is the above length.
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct TupleData {
-    columns: Vec16<ColumnData>,
+    columns: VecWithEncoding<ColumnData, Length16>,
 }
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct ColumnData {
     flag: Byte,
-    column_value: Vec32<Byte>,
+    column_value: VecWithEncoding<Byte, Length32>,
 }
