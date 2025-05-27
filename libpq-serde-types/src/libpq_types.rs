@@ -237,6 +237,14 @@ impl<T, L> VecWithEncoding<T, L> {
     pub fn pop(&mut self) -> Option<T> {
         self.data.pop()
     }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.data.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
+        self.data.iter_mut()
+    }
 }
 
 // Implement from Vec for VecWithEncoding
