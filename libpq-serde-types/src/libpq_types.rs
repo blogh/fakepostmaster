@@ -510,7 +510,9 @@ impl Deserialize for Bytes {
     {
         let len = buffer.try_get_i32()?;
         let mut v = vec![0_u8; len as usize];
-        v.copy_from_slice(buffer);
+        //FIXME: Can we do withour the copy?
+        buffer.try_copy_to_slice(&mut v)?;
+
         Ok(Bytes::from(v))
     }
 }
@@ -1215,6 +1217,19 @@ mod test {
             Bytes::from(vec![1, 2, 3, 4, 5]),
             Bytes::deserialize(&mut buffer)?
         );
+        Ok(())
+    }
+
+    #[test]
+    fn bytes_deserialize_with_rest() -> anyhow::Result<()> {
+        let mut buffer = Bytes::from_static(&[
+            0x00, 0x00, 0x00, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x00, 0x00,
+        ]);
+        assert_eq!(
+            Bytes::from(vec![1, 2, 3, 4, 5]),
+            Bytes::deserialize(&mut buffer)?
+        );
+        assert_eq!(Bytes::from(vec![0, 0]), buffer);
         Ok(())
     }
 
