@@ -247,7 +247,7 @@ pub struct Update {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
     pub rel_oid: i32,
-    pub key_tuple: Byte,
+    //pub key_tuple: Byte,
     pub old_tuple: Byte,
     pub old_tuple_data: TupleData,
     pub new_tuple: Byte,
@@ -272,7 +272,7 @@ pub struct Delete {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
     pub rel_oid: i32,
-    pub key_tuple: Byte,
+    //pub key_tuple: Byte,
     pub old_tuple: Byte,
     pub old_tuple_data: TupleData,
 }
