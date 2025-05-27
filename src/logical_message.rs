@@ -409,11 +409,11 @@ pub struct StreamAbort {
 //   format byte). n is the above length.
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct TupleData {
-    columns: VecWithEncoding<ColumnData, Length16>,
+    pub columns: VecWithEncoding<ColumnData, Length16>,
 }
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct ColumnData {
-    flag: Byte,
-    column_value: VecWithEncoding<Byte, Length32>,
+    pub flag: Byte,
+    pub column_value: Bytes,
 }
