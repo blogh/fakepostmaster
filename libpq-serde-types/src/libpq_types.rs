@@ -438,10 +438,9 @@ where
 // Implement empty arrays
 //--------------------------------------------------------------------------------
 
-impl<T, L> Serialize for Option<VecWithEncoding<T, L>>
+impl<T> Serialize for Option<T>
 where
     T: Serialize,
-    VecWithEncoding<T, L>: Serialize,
 {
     fn serialize(&self, buffer: &mut BytesMut) {
         match self {
@@ -451,10 +450,9 @@ where
     }
 }
 
-impl<T, L> Deserialize for Option<VecWithEncoding<T, L>>
+impl<T> Deserialize for Option<T>
 where
     T: Deserialize,
-    VecWithEncoding<T, L>: Deserialize,
 {
     fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
     where
@@ -468,15 +466,14 @@ where
 
         match tbuffer {
             [0xFF, 0xFF, 0xFF, 0xFF] => Ok(None),
-            _ => Ok(Some(VecWithEncoding::<T, L>::deserialize(buffer)?)),
+            _ => Ok(Some(T::deserialize(buffer)?)),
         }
     }
 }
 
-impl<T, L> ByteSized for Option<VecWithEncoding<T, L>>
+impl<T> ByteSized for Option<T>
 where
     T: ByteSized,
-    VecWithEncoding<T, L>: ByteSized,
 {
     fn byte_size(&self) -> i32 {
         match self {
