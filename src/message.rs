@@ -3,7 +3,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use libpq_serde_macros::{MessageBody, SerdeLibpqData, TryFromRawMessage};
 use libpq_serde_types::{
     ByteSized, Deserialize, Serialize,
-    libpq_types::{Byte, Byte4, Length16, Length32, NullLength, VecWithEncoding},
+    libpq_types::{Byte, Byte4, Length16, NullLength, VecWithEncoding},
 };
 use md5::{Digest, Md5};
 use std::collections::HashMap;
