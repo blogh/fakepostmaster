@@ -58,6 +58,7 @@ fn main() -> anyhow::Result<()> {
             vec![
                 "BEGIN;".to_string(),
                 "SELECT 'hello world';".to_string(),
+                "SELECT oid, relname, relpages FROM pg_class LIMIT 1;".to_string(),
                 "ROLLBACK;".to_string(),
                 "COPY (SELECT * FROM pg_class LIMIT 2) TO STDOUT;".to_string(),
                 "COPY (SELECT * FROM pg_class WHERE false) TO STDOUT;".to_string(),
