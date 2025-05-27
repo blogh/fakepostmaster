@@ -1,11 +1,11 @@
+use anyhow::anyhow;
 use std::collections::HashMap;
-use std::ffi::CString;
 use std::net::TcpStream;
 use tracing::*;
 
 use libpq_serde_types::Deserialize;
 
-use crate::handler::{LibPqReader, LibPqWriter};
+use super::{LibPqReader, LibPqWriter, PgToRustTypes, PgType, decode_from_text};
 use crate::logical_message::*;
 use crate::message::*;
 use crate::streaming_message::*;
@@ -16,33 +16,152 @@ pub enum Message {
     Backend(BackendMessageKind),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Context {
     Connected,
     Disconnected,
     Authentication,
-    Query(Option<(QType, QState)>),
+    QTextSubmitted(String),
+    SimpleQuery(QState),
+    CopyIn(CIState),
+    CopyOut(COState),
+    CopyBoth(CBState),
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum QType {
-    Query,
-    CopyIn,
-    CopyOut,
-    CopyBoth,
-}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum QState {
-    Submitted,
-    SendData,
-    CommandComplete,
+    Data(QData),
+    Done,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct StreamingData {
+#[derive(Debug, Clone)]
+pub struct QData {
+    pub query: String,
+    pub header: Vec<QColDesc>,
+    pub data: Vec<Vec<Option<PgToRustTypes>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct QColDesc {
+    pub name: String,
+    pub pg_type: PgType,
+}
+
+impl TryFrom<&crate::message::ColumnDescription> for QColDesc {
+    type Error = anyhow::Error;
+    fn try_from(value: &crate::message::ColumnDescription) -> anyhow::Result<QColDesc> {
+        Ok(Self {
+            name: value.name.clone().into_string()?,
+            pg_type: PgType::try_from(value.datatype_id)?,
+        })
+    }
+}
+
+impl TryFrom<crate::message::ColumnDescription> for QColDesc {
+    type Error = anyhow::Error;
+    fn try_from(value: crate::message::ColumnDescription) -> anyhow::Result<QColDesc> {
+        Ok(Self {
+            name: value.name.into_string()?,
+            pg_type: PgType::try_from(value.datatype_id)?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum CIState {
+    Data,
+    Done,
+}
+
+#[derive(Debug, Clone)]
+pub enum COState {
+    Data,
+    Done,
+}
+
+#[derive(Debug, Clone)]
+pub enum CBState {
+    Data(CBData),
+    Done,
+}
+
+#[derive(Debug, Clone)]
+pub struct CBData {
     start_lsn: i64,
     last_commit_lsn: i64,
+    relation_cache: HashMap<i32, CBRelation>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CBRelation {
+    pub relation: String,
+    pub schema: String,
+    pub columns: Vec<CBColDesc>,
+}
+
+impl TryFrom<&crate::logical_message::Relation> for CBRelation {
+    type Error = anyhow::Error;
+    fn try_from(value: &crate::logical_message::Relation) -> anyhow::Result<CBRelation> {
+        let relation: String = value.relname.clone().into_string()?;
+        let schema: String = value.namespace.clone().into_string()?;
+        let mut columns = Vec::<CBColDesc>::new();
+
+        for col in value.columns.iter() {
+            columns.push(CBColDesc::try_from(col)?);
+        }
+
+        Ok(Self {
+            relation,
+            schema,
+            columns,
+        })
+    }
+}
+
+impl TryFrom<crate::logical_message::Relation> for CBRelation {
+    type Error = anyhow::Error;
+    fn try_from(value: crate::logical_message::Relation) -> anyhow::Result<CBRelation> {
+        let relation: String = value.relname.into_string()?;
+        let schema: String = value.namespace.into_string()?;
+        let mut columns = Vec::<CBColDesc>::new();
+
+        for col in value.columns.into_iter() {
+            columns.push(CBColDesc::try_from(col)?);
+        }
+
+        Ok(Self {
+            relation,
+            schema,
+            columns,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CBColDesc {
+    pub name: String,
+    pub pg_type: PgType,
+}
+
+impl TryFrom<&crate::logical_message::ColumnDescription> for CBColDesc {
+    type Error = anyhow::Error;
+    fn try_from(value: &crate::logical_message::ColumnDescription) -> anyhow::Result<CBColDesc> {
+        //FIXME: have standart name for things like type_oid
+        Ok(Self {
+            name: value.name.clone().into_string()?,
+            pg_type: PgType::try_from(value.type_oid)?,
+        })
+    }
+}
+
+impl TryFrom<crate::logical_message::ColumnDescription> for CBColDesc {
+    type Error = anyhow::Error;
+    fn try_from(value: crate::logical_message::ColumnDescription) -> anyhow::Result<CBColDesc> {
+        Ok(Self {
+            name: value.name.into_string()?,
+            pg_type: PgType::try_from(value.type_oid)?,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -55,7 +174,6 @@ pub struct ClientMachine {
     database: String,
     application_name: String,
     query: Vec<String>,
-    streaming_data: Option<StreamingData>,
     client_parameters: HashMap<String, String>,
     server_parameters: HashMap<String, String>,
 }
@@ -89,7 +207,7 @@ impl ClientMachine {
             ],
         );
         let client_parameters = HashMap::<String, String>::try_from(&startup_message)?;
-        tcp_stream.put_request(startup_message);
+        tcp_stream.put_request(startup_message)?;
 
         Ok(Self {
             last_message_kind: None,
@@ -100,7 +218,6 @@ impl ClientMachine {
             database,
             application_name,
             query,
-            streaming_data: None,
             client_parameters,
             server_parameters: HashMap::<String, String>::new(),
         })
@@ -112,7 +229,7 @@ impl ClientMachine {
         match (
             &self.last_message_kind,
             &current_message_kind,
-            &self.context,
+            &mut self.context,
         ) {
             // The next message should be PasswordMessage .. so we send it
             (
@@ -164,12 +281,11 @@ impl ClientMachine {
                 Message::Backend(BackendMessageKind::ReadyForQuery),
                 _
             ) => {
-                // We create the Query message and send it
-                self.context = Context::Query(Some((QType::Query, QState::Submitted)));
                 match self.query.pop() {
                     // We still have queries to process
                     Some(query) => {
-                        self.tcp_stream.put_message(Query::new(query)?)?;
+                        self.tcp_stream.put_message(Query::new(query.clone())?)?;
+                        self.context = Context::QTextSubmitted(query);
                     }
                     // No more queries: exit
                     None => {
@@ -184,21 +300,42 @@ impl ClientMachine {
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::RowDescription),
-                Context::Query(Some((QType::Query, QState::Submitted)))
+                Context::QTextSubmitted(query)
             ) => {
-                self.context = Context::Query(Some((QType::Query, QState::SendData)));
                 let message = RowDescription::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:?}");
+
+                let mut qdata = QData {
+                    //TODO: Is the data cloned here? And same everywhere we use to_owned()
+                    query: query.to_owned(),
+                    header: Vec::<QColDesc>::new(),
+                    data: Vec::new(),
+                };
+                for col in message.columns {
+                    qdata.header.push(QColDesc::try_from(col)?);
+                }
+
+                self.context = Context::SimpleQuery(QState::Data(qdata));
             }
 
             // DataRow is one row of data sent by the backend
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::DataRow),
-                Context::Query(Some((QType::Query, QState::SendData))),
+                Context::SimpleQuery(QState::Data(qdata)),
             ) => {
                 let message = DataRow::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:?}");
+                let mut datarow = Vec::new();
+                for (idx, data) in message.columns.into_iter().enumerate() {
+                    let decoded_data = match data {
+                        None => None,
+                        Some(data) => Some(decode_from_text(&data, &qdata.header[idx].pg_type)?),
+                    };
+                    datarow.push(decoded_data);
+                }
+                qdata.data.push(datarow);
+                self.context = Context::SimpleQuery(QState::Data(qdata.to_owned()));
             }
 
             // CommandComplete marks the end of the query. The next message should be
@@ -207,9 +344,10 @@ impl ClientMachine {
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::CommandComplete),
-                Context::Query(Some((query_type, _))),
+                Context::SimpleQuery(QState::Data(qdata)),
             ) => {
-                self.context = Context::Query(Some((*query_type, QState::CommandComplete)));
+                info!("{qdata:#?}");
+                self.context = Context::SimpleQuery(QState::Done);
             }
 
             // CopyOutResponse is sent after receiving a COPY TO STDOUT. The next message
@@ -218,41 +356,68 @@ impl ClientMachine {
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::CopyOutResponse),
-                Context::Query(Some((QType::Query, QState::Submitted)))
+                Context::QTextSubmitted(query)
             ) => {
-                self.context = Context::Query(Some((QType::CopyOut, QState::SendData)));
+                self.context = Context::CopyOut(COState::Data);
                 let message = CopyOutResponse::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:?}");
             }
 
+            // We are streaming data from CopyOut. The next message should also come from the
+            // backend en be either CopyData or CommandComplete.
+            #[cfg_attr(rustfmt, rustfmt_skip)]
+            (
+                Some(_),
+                Message::Backend(BackendMessageKind::CopyData),
+                Context::CopyOut(COState::Data)
+            ) => {
+                let message = CopyData::try_from(&mut raw_message)?;
+                debug!("DETAIL: {message:?}");
+            }
+
+            // CopyOut is done The next message should be Commandcomplete.
+            #[cfg_attr(rustfmt, rustfmt_skip)]
+            (
+                Some(_),
+                Message::Backend(BackendMessageKind::CommandComplete),
+                Context::CopyOut(COState::Data)
+            ) => {
+                self.context = Context::CopyOut(COState::Done);
+            }
+
             // CopyInResponse is sent after receiving a COPY FROM STDIN. The next message
-            // should be a CopyData also sent by the Backend
+            // should be a CopyData sent by the Frontend
             #[cfg_attr(rustfmt, rustfmt_skip)]
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::CopyInResponse),
-                Context::Query(Some((QType::Query, QState::Submitted)))
+                Context::QTextSubmitted(query)
             ) => {
-                self.context = Context::Query(Some((QType::CopyIn, QState::SendData)));
+                self.context = Context::CopyIn(CIState::Data);
                 let message = CopyInResponse::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:?}");
             }
 
-            // We are streaming data from CopyIn or CopyOut. The next message
-            // should also come from the backend en be either CopyData or CommandComplete.
+            // We are streaming data from CopyIn. The next message
+            // should come from the frontend and be either CopyData or CopyDone.
             #[cfg_attr(rustfmt, rustfmt_skip)]
             (
                 Some(_),
-                Message::Backend(BackendMessageKind::CopyData),
-                Context::Query(Some((QType::CopyIn, QState::SendData)))
-            ) |
-            (
-                Some(_),
-                Message::Backend(BackendMessageKind::CopyData),
-                Context::Query(Some((QType::CopyOut, QState::SendData)))
+                Message::Frontend(FrontendMessageKind::CopyData),
+                Context::CopyIn(CIState::Data)
             ) => {
                 let message = CopyData::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:?}");
+            }
+
+            // CopyIn is done The next message should be Commandcomplete.
+            #[cfg_attr(rustfmt, rustfmt_skip)]
+            (
+                Some(_),
+                Message::Backend(BackendMessageKind::CommandComplete),
+                Context::CopyIn(CIState::Data)
+            ) => {
+                self.context = Context::CopyIn(CIState::Done);
             }
 
             // CopyBothResponse is sent after receiving a request to stream data with
@@ -262,10 +427,18 @@ impl ClientMachine {
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::CopyBothResponse),
-                Context::Query(Some((QType::Query, QState::Submitted)))
+                Context::QTextSubmitted(query)
             ) => {
-                self.context = Context::Query(Some((QType::CopyBoth, QState::SendData)));
-                self.streaming_data = Some(StreamingData { start_lsn: lsn_create(0, 24276488), last_commit_lsn: lsn_create(0, 24276488) });
+                //FIXME:rework init
+                self.context = Context::CopyBoth(
+                    CBState::Data(
+                        CBData {
+                            start_lsn: 0,
+                            last_commit_lsn: 0,
+                            relation_cache: HashMap::new()
+                        }
+                    )
+                );
                 let message = CopyBothResponse::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:?}");
             }
@@ -276,20 +449,31 @@ impl ClientMachine {
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::CopyData),
-                Context::Query(Some((QType::CopyBoth, QState::SendData)))
+                Context::CopyBoth(CBState::Data(_))
             ) => {
                 self.streaming_replication(&mut raw_message)?;
             }
 
-            // We are done streaming data from CopyBoth. The next message should also come from
-            // the backend en be CommandComplete.
+            // the backend is done streaming data from CopyBoth. The next message should come from the
+            // frontend be either CopyData or CopyDone
             #[cfg_attr(rustfmt, rustfmt_skip)]
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::CopyDone),
-                Context::Query(Some((QType::CopyBoth, QState::SendData)))
+                Context::CopyBoth(CBState::Data(_))
             ) => {
-                self.streaming_data = None;
+                //FIXME: We should send CopyDone here
+            }
+
+            // We are done streaming data from CopyBoth. The next message should also come from
+            // the backend and be CommandComplete.
+            #[cfg_attr(rustfmt, rustfmt_skip)]
+            (
+                Some(_),
+                Message::Backend(BackendMessageKind::CommandComplete),
+                Context::CopyBoth(CBState::Data(_))
+            ) => {
+                self.context = Context::CopyBoth(CBState::Done);
             }
 
             // Async message can happend anytime, they dont change the context
@@ -299,7 +483,6 @@ impl ClientMachine {
             // but it can be sent anytime if some client specific setting are modified
             // on the backend.
             (Some(_), Message::Backend(BackendMessageKind::ParameterStatus), _) => {
-                //TODO: store or update parameters
                 let message = ParameterStatus::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:?}");
                 self.server_parameters
@@ -374,6 +557,14 @@ impl ClientMachine {
                         LogicalReplicationMessageKind::Relation => {
                             let message = Relation::deserialize(&mut raw_message.raw_body)?;
                             debug!("DETAIL: {:?}", message,);
+
+                            //FIXME: probably do something with else? or assert that we are in the
+                            //right context at the beginning
+                            if let Context::CopyBoth(CBState::Data(ref mut cbdata)) = self.context {
+                                cbdata
+                                    .relation_cache
+                                    .insert(message.rel_oid, CBRelation::try_from(message)?);
+                            }
                         }
                         LogicalReplicationMessageKind::Begin => {
                             let message = Begin::deserialize(&mut raw_message.raw_body)?;
@@ -381,24 +572,122 @@ impl ClientMachine {
                         }
                         LogicalReplicationMessageKind::Commit => {
                             let message = Commit::deserialize(&mut raw_message.raw_body)?;
-                            let inner = self
-                                .streaming_data
-                                .as_mut()
-                                .expect("Failed to access streaming_data");
-                            inner.last_commit_lsn = message.commit_lsn;
                             debug!("DETAIL: {:?}", message,);
+
+                            //FIXME: probably do something with else? or assert that we are in the
+                            //right context at the beginning
+                            if let Context::CopyBoth(CBState::Data(ref mut cbdata)) = self.context {
+                                cbdata.last_commit_lsn = message.commit_lsn;
+                            }
                         }
                         LogicalReplicationMessageKind::Insert => {
                             let message = Insert::deserialize(&mut raw_message.raw_body)?;
                             debug!("DETAIL: {:?}", message,);
+
+                            if let Context::CopyBoth(CBState::Data(ref cbdata)) = self.context {
+                                match cbdata.relation_cache.get(&message.rel_oid) {
+                                    Some(relation) => {
+                                        let cols = relation
+                                            .columns
+                                            .iter()
+                                            .map(|d| d.name.clone())
+                                            .collect::<Vec<_>>()
+                                            .join(", ");
+                                        let mut datarow = Vec::new();
+                                        for (idx, data) in
+                                            message.new_tuple_data.columns.into_iter().enumerate()
+                                        {
+                                            //FIXME: column_value is a bad name
+                                            datarow.push(decode_from_text(
+                                                &data.column_value,
+                                                &relation.columns[idx].pg_type,
+                                            )?);
+                                        }
+                                        info!(
+                                            "INSERT INTO {}({}) VALUES {:?}",
+                                            relation.relation, cols, datarow
+                                        );
+                                    }
+                                    None => return Err(anyhow!("Unknown relation in Insert")),
+                                }
+                            }
                         }
                         LogicalReplicationMessageKind::Update => {
+                            debug!("UPDATE: {:?}", raw_message.raw_body);
                             let message = Update::deserialize(&mut raw_message.raw_body)?;
                             debug!("DETAIL: {:?}", message,);
+
+                            if let Context::CopyBoth(CBState::Data(ref cbdata)) = self.context {
+                                match cbdata.relation_cache.get(&message.rel_oid) {
+                                    Some(relation) => {
+                                        let cols = relation
+                                            .columns
+                                            .iter()
+                                            .map(|d| d.name.clone())
+                                            .collect::<Vec<_>>()
+                                            .join(", ");
+
+                                        let mut old_datarow = Vec::new();
+                                        for (idx, data) in
+                                            message.old_tuple_data.columns.into_iter().enumerate()
+                                        {
+                                            //FIXME: column_value is a bad name
+                                            old_datarow.push(decode_from_text(
+                                                &data.column_value,
+                                                &relation.columns[idx].pg_type,
+                                            )?);
+                                        }
+
+                                        let mut new_datarow = Vec::new();
+                                        for (idx, data) in
+                                            message.new_tuple_data.columns.into_iter().enumerate()
+                                        {
+                                            //FIXME: column_value is a bad name
+                                            new_datarow.push(decode_from_text(
+                                                &data.column_value,
+                                                &relation.columns[idx].pg_type,
+                                            )?);
+                                        }
+                                        info!(
+                                            "UPDATE ON {}({}) OLD_VALUES {:?} NEW_VALUES {:?}",
+                                            relation.relation, cols, old_datarow, new_datarow
+                                        );
+                                    }
+                                    None => return Err(anyhow!("Unknown relation in Update")),
+                                }
+                            }
                         }
                         LogicalReplicationMessageKind::Delete => {
                             let message = Delete::deserialize(&mut raw_message.raw_body)?;
                             debug!("DETAIL: {:?}", message,);
+
+                            if let Context::CopyBoth(CBState::Data(ref cbdata)) = self.context {
+                                match cbdata.relation_cache.get(&message.rel_oid) {
+                                    Some(relation) => {
+                                        let cols = relation
+                                            .columns
+                                            .iter()
+                                            .map(|d| d.name.clone())
+                                            .collect::<Vec<_>>()
+                                            .join(", ");
+                                        let mut datarow = Vec::new();
+                                        for (idx, data) in
+                                            message.old_tuple_data.columns.into_iter().enumerate()
+                                        {
+                                            //FIXME: column_value is a bad name
+                                            datarow.push(decode_from_text(
+                                                &data.column_value,
+                                                &relation.columns[idx].pg_type,
+                                            )?);
+                                        }
+                                        info!(
+                                            "DELETE FROM {}({}) VALUES {:?}",
+                                            relation.relation, cols, datarow
+                                        );
+                                    }
+                                    None => return Err(anyhow!("Unknown relation in Delete")),
+                                }
+                            }
                         }
                         _ => debug!(
                             "Unsupported message: {:?}",

@@ -135,7 +135,7 @@ pub enum PgToRustTypes {
     Oid(u32),
 }
 
-pub fn decode_from_text(data: Bytes, pg_type: &PgType) -> anyhow::Result<PgToRustTypes> {
+pub fn decode_from_text(data: &Bytes, pg_type: &PgType) -> anyhow::Result<PgToRustTypes> {
     //FIXME: quick and dirty hack
     let mut data = data.clone();
     match pg_type {
