@@ -983,18 +983,19 @@ pub struct CopyBothResponse {
 #[message_body(kind = 'D')]
 pub struct DataRow {
     // The serialization will create a length field
-    pub columns: VecWithEncoding<ColumnData, Length16>,
+    pub columns: VecWithEncoding<Option<Bytes>, Length16>,
+    //pub columns: VecWithEncoding<ColumnData, Length16>,
 }
 
-impl DataRow {
-    pub fn new(columns: Vec<ColumnData>) -> Self {
-        Self {
-            columns: columns.into(),
-        }
-    }
-}
-
-pub type ColumnData = Option<VecWithEncoding<Byte, Length32>>;
+//impl DataRow {
+//    pub fn new(columns: Vec<Bytes>) -> Self {
+//        Self {
+//            columns: columns.into(),
+//        }
+//    }
+//}
+//
+//pub type ColumnData = Option<VecWithEncoding<Byte, Length32>>;
 
 // Describe (F)
 // * Byte1('D') Identifies the message as a Describe command.
