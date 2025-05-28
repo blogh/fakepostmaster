@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::ffi::CString;
-use std::ops::Index;
+use std::ops::{Index, IndexMut};
 
 use crate::{ByteSized, Deserialize, Serialize};
 
@@ -277,6 +277,13 @@ impl<T, L> Index<usize> for VecWithEncoding<T, L> {
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.data[index]
+    }
+}
+
+// Implement indexation support for VecWithEncoding
+impl<T, L> IndexMut<usize> for VecWithEncoding<T, L> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.data[index]
     }
 }
 
