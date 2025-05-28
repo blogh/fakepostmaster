@@ -13,7 +13,7 @@ use tracing::*;
 
 use libpq_serde_types::{ByteSized, Deserialize, Serialize, libpq_types};
 
-use crate::message::*;
+use crate::message::message::*;
 
 trait LibPqReader: Read {
     fn get_raw_backend_message(&mut self) -> anyhow::Result<RawMessage>;

@@ -3,7 +3,7 @@ use bytes::Bytes;
 use libpq_serde_macros::{MessageBody, SerdeLibpqData};
 use libpq_serde_types::{ByteSized, Deserialize, Serialize, libpq_types::Byte};
 
-use crate::message::MessageBody;
+use super::message::MessageBody;
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct StreamingHeader {

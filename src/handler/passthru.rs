@@ -8,10 +8,11 @@ use tracing::*;
 
 use libpq_serde_types::{Deserialize, Serialize};
 
+//FIXME: use super::
 use crate::handler::{LibPqReader, LibPqWriter, PgToRustTypes, PgType, decode_from_text};
-use crate::logical_message::*;
-use crate::message::*;
-use crate::streaming_message::*;
+use crate::message::logical_message::*;
+use crate::message::message::*;
+use crate::message::streaming_message::*;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -70,9 +71,9 @@ pub struct CBRelation {
     pub columns: Vec<CBColDesc>,
 }
 
-impl TryFrom<&crate::logical_message::Relation> for CBRelation {
+impl TryFrom<&crate::message::logical_message::Relation> for CBRelation {
     type Error = anyhow::Error;
-    fn try_from(value: &crate::logical_message::Relation) -> anyhow::Result<CBRelation> {
+    fn try_from(value: &crate::message::logical_message::Relation) -> anyhow::Result<CBRelation> {
         let relation: String = value.relname.clone().into_string()?;
         let schema: String = value.namespace.clone().into_string()?;
         let mut columns = Vec::<CBColDesc>::new();
@@ -89,9 +90,9 @@ impl TryFrom<&crate::logical_message::Relation> for CBRelation {
     }
 }
 
-impl TryFrom<crate::logical_message::Relation> for CBRelation {
+impl TryFrom<crate::message::logical_message::Relation> for CBRelation {
     type Error = anyhow::Error;
-    fn try_from(value: crate::logical_message::Relation) -> anyhow::Result<CBRelation> {
+    fn try_from(value: crate::message::logical_message::Relation) -> anyhow::Result<CBRelation> {
         let relation: String = value.relname.into_string()?;
         let schema: String = value.namespace.into_string()?;
         let mut columns = Vec::<CBColDesc>::new();
@@ -114,9 +115,11 @@ pub struct CBColDesc {
     pub pg_type: PgType,
 }
 
-impl TryFrom<&crate::logical_message::ColumnDescription> for CBColDesc {
+impl TryFrom<&crate::message::logical_message::ColumnDescription> for CBColDesc {
     type Error = anyhow::Error;
-    fn try_from(value: &crate::logical_message::ColumnDescription) -> anyhow::Result<CBColDesc> {
+    fn try_from(
+        value: &crate::message::logical_message::ColumnDescription,
+    ) -> anyhow::Result<CBColDesc> {
         //FIXME: have standart name for things like type_oid
         Ok(Self {
             name: value.name.clone().into_string()?,
@@ -125,9 +128,11 @@ impl TryFrom<&crate::logical_message::ColumnDescription> for CBColDesc {
     }
 }
 
-impl TryFrom<crate::logical_message::ColumnDescription> for CBColDesc {
+impl TryFrom<crate::message::logical_message::ColumnDescription> for CBColDesc {
     type Error = anyhow::Error;
-    fn try_from(value: crate::logical_message::ColumnDescription) -> anyhow::Result<CBColDesc> {
+    fn try_from(
+        value: crate::message::logical_message::ColumnDescription,
+    ) -> anyhow::Result<CBColDesc> {
         Ok(Self {
             name: value.name.into_string()?,
             pg_type: PgType::try_from(value.type_oid)?,

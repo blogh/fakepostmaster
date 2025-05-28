@@ -8,7 +8,7 @@ use libpq_serde_types::{
     libpq_types::{Byte, Length16, Length32, VecWithEncoding},
 };
 
-use crate::message::MessageBody;
+use super::message::MessageBody;
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct LogicalHeader {
