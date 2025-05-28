@@ -1,11 +1,14 @@
 use anyhow::anyhow;
 use bytes::{BufMut, Bytes, BytesMut};
-use libpq_serde_macros::SerdeLibpqData;
+use std::ffi::CString;
+
+use libpq_serde_macros::{MessageBody, SerdeLibpqData};
 use libpq_serde_types::{
     ByteSized, Deserialize, Serialize,
     libpq_types::{Byte, Length16, Length32, VecWithEncoding},
 };
-use std::ffi::CString;
+
+use crate::message::MessageBody;
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct LogicalHeader {
@@ -106,7 +109,8 @@ impl TryFrom<i8> for LogicalReplicationMessageKind {
 // * Int64 (TimestampTz) Commit timestamp of the transaction. The value is in number of microseconds
 //       since PostgreSQL epoch (2000-01-01).
 // * Int32 (TransactionId) Xid of the transaction.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'B')]
 pub struct Begin {
     pub final_lsn: i64,
     pub commit_timestamp: i64,
@@ -122,7 +126,8 @@ pub struct Begin {
 // * String The prefix of the logical decoding message.
 // * Int32 Length of the content.
 // * Byten The content of the logical decoding message.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'M')]
 pub struct Message {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
@@ -139,7 +144,8 @@ pub struct Message {
 // * Int64 (XLogRecPtr) The end LSN of the transaction.
 // * Int64 (TimestampTz) Commit timestamp of the transaction. The value is in number of microseconds
 //     since PostgreSQL epoch (2000-01-01).
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'C')]
 pub struct Commit {
     pub flag: i8,
     pub commit_lsn: i64,
@@ -152,7 +158,8 @@ pub struct Commit {
 // * Int64 (XLogRecPtr) The LSN of the commit on the origin server.
 // * String Name of the origin.
 // Note that there can be multiple Origin messages inside a single transaction.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'O')]
 pub struct Origin {
     pub commit_lsn_orig: i64,
     pub orig_name: CString,
@@ -174,7 +181,8 @@ pub struct Origin {
 // * String Name of the column.
 // * Int32 (Oid) OID of the column's data type.
 // * Int32 Type modifier of the column (atttypmod).
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'R')]
 pub struct Relation {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
@@ -200,7 +208,8 @@ pub struct ColumnDescription {
 //* Int32 (Oid) OID of the data type.
 //* String Namespace (empty string for pg_catalog).
 //* String Name of the data type.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'Y')]
 pub struct Type {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
@@ -216,7 +225,8 @@ pub struct Type {
 // * Int32 (Oid) OID of the relation corresponding to the ID in the relation message.
 // * Byte1('N') Identifies the following TupleData message as a new tuple.
 // * TupleData TupleData message part representing the contents of new tuple.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'I')]
 pub struct Insert {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
@@ -242,7 +252,8 @@ pub struct Insert {
 //
 // The Update message may contain either a 'K' message part or an 'O' message part or neither of them,
 // but never both of them.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'U')]
 pub struct Update {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
@@ -267,7 +278,8 @@ pub struct Update {
 //   depending on the previous field.
 //
 // The Delete message may contain either a 'K' message part or an 'O' message part, but never both of them.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'D')]
 pub struct Delete {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
@@ -285,7 +297,8 @@ pub struct Delete {
 // * Int8 Option bits for TRUNCATE: 1 for CASCADE, 2 for RESTART IDENTITY
 // * Int32 (Oid) OID of the relation corresponding to the ID in the relation message. This field is
 //       repeated for each relation.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'T')]
 pub struct Truncate {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
@@ -300,7 +313,8 @@ pub struct Truncate {
 // * Int32 (TransactionId) Xid of the transaction.
 // * Int8 A value of 1 indicates this is the first stream segment for this XID, 0 for any other stream
 // * segment.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'S')]
 pub struct StreamStart {
     pub txn_id: i32,
     pub first_segment: i8,
@@ -308,7 +322,8 @@ pub struct StreamStart {
 
 // Stream Stop
 // * Byte1('E') Identifies the message as a stream stop message.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'E')]
 pub struct StreamStop {}
 
 // Stream Commit
@@ -319,7 +334,8 @@ pub struct StreamStop {}
 // * Int64 (XLogRecPtr) The end LSN of the transaction.
 // * Int64 (TimestampTz) Commit timestamp of the transaction. The value is in number of microseconds
 //     since PostgreSQL epoch (2000-01-01).
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'c')]
 pub struct StreamCommit {
     pub txn_id: i32,
     pub flag: i8,
@@ -336,7 +352,8 @@ pub struct StreamCommit {
 // * Int64 (XLogRecPtr) The LSN of the abort. This field is available since protocol version 4.
 // * Int64 (TimestampTz) Abort timestamp of the transaction. The value is in number of microseconds
 //       since PostgreSQL epoch (2000-01-01). This field is available since protocol version 4.
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq, SerdeLibpqData, MessageBody)]
+#[message_body(kind = 'A')]
 pub struct StreamAbort {
     pub txn_id: i32,
     pub sub_txn_id: i32,
