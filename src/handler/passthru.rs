@@ -1,13 +1,14 @@
+use anyhow::anyhow;
+use bytes::{Bytes, BytesMut};
 use std::collections::HashMap;
-use std::ffi::CString;
 use std::io::ErrorKind;
 use std::net::TcpStream;
 use std::time::Duration;
 use tracing::*;
 
-use libpq_serde_types::Deserialize;
+use libpq_serde_types::{Deserialize, Serialize};
 
-use crate::handler::{LibPqReader, LibPqWriter};
+use crate::handler::{LibPqReader, LibPqWriter, PgToRustTypes, PgType, decode_from_text};
 use crate::logical_message::*;
 use crate::message::*;
 use crate::streaming_message::*;
@@ -18,29 +19,121 @@ pub enum Message {
     Backend(BackendMessageKind),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Context {
     Connected,
     Disconnected,
     Authentication,
-    Query(Option<(QType, QState)>),
+    ReadyForQuery,
+    QTextSubmitted(String),
+    SimpleQuery(QState),
+    CopyIn(CIState),
+    CopyOut(COState),
+    CopyBoth(CBState),
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum QType {
-    Query,
-    CopyIn,
-    CopyOut,
-    CopyBoth,
-}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum QState {
-    Submitted,
-    SendData,
-    CommandComplete,
+    Data(String),
+    Done,
 }
 
+#[derive(Debug, Clone)]
+pub enum CIState {
+    Data,
+    Done,
+}
+
+#[derive(Debug, Clone)]
+pub enum COState {
+    Data,
+    Done,
+}
+
+#[derive(Debug, Clone)]
+pub enum CBState {
+    Data(CBData),
+    Done,
+}
+
+#[derive(Debug, Clone)]
+pub struct CBData {
+    start_lsn: i64,
+    last_commit_lsn: i64,
+    relation_cache: HashMap<i32, CBRelation>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CBRelation {
+    pub relation: String,
+    pub schema: String,
+    pub columns: Vec<CBColDesc>,
+}
+
+impl TryFrom<&crate::logical_message::Relation> for CBRelation {
+    type Error = anyhow::Error;
+    fn try_from(value: &crate::logical_message::Relation) -> anyhow::Result<CBRelation> {
+        let relation: String = value.relname.clone().into_string()?;
+        let schema: String = value.namespace.clone().into_string()?;
+        let mut columns = Vec::<CBColDesc>::new();
+
+        for col in value.columns.iter() {
+            columns.push(CBColDesc::try_from(col)?);
+        }
+
+        Ok(Self {
+            relation,
+            schema,
+            columns,
+        })
+    }
+}
+
+impl TryFrom<crate::logical_message::Relation> for CBRelation {
+    type Error = anyhow::Error;
+    fn try_from(value: crate::logical_message::Relation) -> anyhow::Result<CBRelation> {
+        let relation: String = value.relname.into_string()?;
+        let schema: String = value.namespace.into_string()?;
+        let mut columns = Vec::<CBColDesc>::new();
+
+        for col in value.columns.into_iter() {
+            columns.push(CBColDesc::try_from(col)?);
+        }
+
+        Ok(Self {
+            relation,
+            schema,
+            columns,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CBColDesc {
+    pub name: String,
+    pub pg_type: PgType,
+}
+
+impl TryFrom<&crate::logical_message::ColumnDescription> for CBColDesc {
+    type Error = anyhow::Error;
+    fn try_from(value: &crate::logical_message::ColumnDescription) -> anyhow::Result<CBColDesc> {
+        //FIXME: have standart name for things like type_oid
+        Ok(Self {
+            name: value.name.clone().into_string()?,
+            pg_type: PgType::try_from(value.type_oid)?,
+        })
+    }
+}
+
+impl TryFrom<crate::logical_message::ColumnDescription> for CBColDesc {
+    type Error = anyhow::Error;
+    fn try_from(value: crate::logical_message::ColumnDescription) -> anyhow::Result<CBColDesc> {
+        Ok(Self {
+            name: value.name.into_string()?,
+            pg_type: PgType::try_from(value.type_oid)?,
+        })
+    }
+}
 #[derive(Debug, Clone, Copy)]
 pub enum ReadFrom {
     Frontend,       // Read from frontend wait if necessary
@@ -59,13 +152,18 @@ pub struct PassThruMachine {
     fe_stream: TcpStream,
     user: Option<String>,
     database: Option<String>,
+    anonymize: bool,
     application_name: Option<String>,
     client_parameters: HashMap<String, String>,
     server_parameters: HashMap<String, String>,
 }
 
 impl PassThruMachine {
-    pub fn connect(mut be_stream: TcpStream, mut fe_stream: TcpStream) -> anyhow::Result<Self> {
+    pub fn connect(
+        mut be_stream: TcpStream,
+        mut fe_stream: TcpStream,
+        anonymize: bool,
+    ) -> anyhow::Result<Self> {
         //be_stream.set_read_timeout(Some(Duration::from_millis(100)))?;
         //fe_stream.set_read_timeout(Some(Duration::from_millis(100)))?;
 
@@ -84,18 +182,19 @@ impl PassThruMachine {
             user: None,
             database: None,
             application_name: None,
+            anonymize,
             client_parameters: HashMap::<String, String>::try_from(&startup_message)?,
             server_parameters: HashMap::<String, String>::new(),
         })
     }
 
     pub fn next(&mut self) -> anyhow::Result<Context> {
-        let (current_message_kind, raw_message) = self.get_message()?;
+        let (current_message_kind, mut raw_message) = self.get_message()?;
 
         match (
             &self.last_message_kind,
             &current_message_kind,
-            &self.context,
+            &mut self.context,
         ) {
             // The next message should be PasswordMessage, we read it from the frontend
             #[cfg_attr(rustfmt, rustfmt_skip)]
@@ -146,7 +245,7 @@ impl PassThruMachine {
                 Message::Backend(BackendMessageKind::ReadyForQuery),
                 _,
             ) => {
-                self.context = Context::Query(None);
+                self.context = Context::ReadyForQuery;
                 self.fe_stream.put_raw_message(raw_message)?;
                 self.read_from = ReadFrom::Frontend;
             }
@@ -165,11 +264,12 @@ impl PassThruMachine {
             (
                 Some(_),
                 Message::Frontend(FrontendMessageKind::Query),
-                Context::Query(None),
+                Context::ReadyForQuery,
             ) => {
-                self.context = Context::Query(Some((QType::Query, QState::Submitted)));
                 let msg = Query::try_from(&mut raw_message.clone())?;
-                debug!("DETAIL: query: {:}", msg.query.into_string()?);
+                let query = msg.query.into_string()?;
+                debug!("DETAIL: query: {:}", query);
+                self.context = Context::QTextSubmitted(query);
                 self.be_stream.put_raw_message(raw_message)?;
                 self.read_from = ReadFrom::Backend;
             }
@@ -180,9 +280,9 @@ impl PassThruMachine {
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::RowDescription),
-                Context::Query(Some((QType::Query, QState::Submitted))),
+                Context::QTextSubmitted(query),
             ) => {
-                self.context = Context::Query(Some((QType::Query, QState::SendData)));
+                self.context = Context::SimpleQuery(QState::Data(query.to_owned()));
                 self.fe_stream.put_raw_message(raw_message)?;
             }
 
@@ -191,10 +291,9 @@ impl PassThruMachine {
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::DataRow),
-                Context::Query(Some((QType::Query, QState::SendData)))
+                Context::SimpleQuery(QState::Data(query))
             ) => {
-                let message = DataRow::try_from(&mut raw_message.clone())?;
-                debug!("DETAIL: {message:?}");
+                self.context = Context::SimpleQuery(QState::Data(query.to_owned()));
                 self.fe_stream.put_raw_message(raw_message)?;
             }
 
@@ -204,9 +303,9 @@ impl PassThruMachine {
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::CommandComplete),
-                Context::Query(Some((query_type, _))),
+                Context::SimpleQuery(QState::Data(_)),
             ) => {
-                self.context = Context::Query(Some((*query_type, QState::CommandComplete)));
+                self.context = Context::SimpleQuery(QState::Done);
                 self.fe_stream.put_raw_message(raw_message)?;
             }
 
@@ -216,44 +315,72 @@ impl PassThruMachine {
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::CopyOutResponse),
-                Context::Query(Some((QType::Query, QState::Submitted)))
+                Context::QTextSubmitted(_query)
             ) => {
-                self.context = Context::Query(Some((QType::CopyOut, QState::SendData)));
+                self.context = Context::CopyOut(COState::Data);
                 let message = CopyOutResponse::try_from(&mut raw_message.clone())?;
                 debug!("DETAIL: {message:?}");
                 self.fe_stream.put_raw_message(raw_message)?;
             }
 
-            // CopyInResponse is sent after receiving a COPY FROM STDIN. The next message
-            // should be a CopyData also sent by the Backend
+            // We are streaming data from CopyOut. The next message should also come from the
+            // backend en be either CopyData or CopyDone
             #[cfg_attr(rustfmt, rustfmt_skip)]
             (
                 Some(_),
-                Message::Backend(BackendMessageKind::CopyInResponse),
-                Context::Query(Some((QType::Query, QState::Submitted)))
+                Message::Backend(BackendMessageKind::CopyData),
+                Context::CopyOut(COState::Data)
             ) => {
-                self.context = Context::Query(Some((QType::CopyIn, QState::SendData)));
-                let message = CopyInResponse::try_from(&mut raw_message.clone())?;
+                self.context = Context::CopyOut(COState::Data);
+                let message = CopyData::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:?}");
                 self.fe_stream.put_raw_message(raw_message)?;
             }
 
-            // We are streaming data from CopyIn CopyOut or CopyBoth. The next message
-            // should also come from the backend en be either CopyData or CopyDone.
+            // CopyOut is done The next message should be Commandcomplete.
             #[cfg_attr(rustfmt, rustfmt_skip)]
             (
                 Some(_),
-                Message::Backend(BackendMessageKind::CopyData),
-                Context::Query(Some((QType::CopyIn, QState::SendData)))
-            ) |
+                Message::Backend(BackendMessageKind::CopyDone),
+                Context::CopyOut(COState::Data)
+            ) => {
+                self.context = Context::CopyOut(COState::Done);
+                self.fe_stream.put_raw_message(raw_message)?;
+            }
+
+            // CopyInResponse is sent after receiving a COPY FROM STDIN. The next message
+            // should be a CopyData sent by the frontend
+            #[cfg_attr(rustfmt, rustfmt_skip)]
             (
                 Some(_),
-                Message::Backend(BackendMessageKind::CopyData),
-                Context::Query(Some((QType::CopyOut, QState::SendData)))
+                Message::Backend(BackendMessageKind::CopyInResponse),
+                Context::QTextSubmitted(_query)
             ) => {
-                let message = CopyData::try_from(&mut raw_message.clone())?;
-                debug!("DETAIL: {message:?}");
+                self.context = Context::CopyIn(CIState::Data);
                 self.fe_stream.put_raw_message(raw_message)?;
+            }
+
+            // We are streaming data from CopyIn. The next message
+            // should come from the frontend and be either CopyData or CopyDone.
+            #[cfg_attr(rustfmt, rustfmt_skip)]
+            (
+                Some(_),
+                Message::Frontend(FrontendMessageKind::CopyData),
+                Context::CopyIn(CIState::Data)
+            ) => {
+                self.context = Context::CopyIn(CIState::Data);
+                self.be_stream.put_raw_message(raw_message)?;
+            }
+
+            // CopyIn is done The next message should be Commandcomplete.
+            #[cfg_attr(rustfmt, rustfmt_skip)]
+            (
+                Some(_),
+                Message::Frontend(FrontendMessageKind::CopyDone),
+                Context::CopyIn(CIState::Data)
+            ) => {
+                self.context = Context::CopyIn(CIState::Done);
+                self.be_stream.put_raw_message(raw_message)?;
             }
 
             // CopyBothResponse is sent after receiving a request to stream data with
@@ -263,9 +390,9 @@ impl PassThruMachine {
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::CopyBothResponse),
-                Context::Query(Some((QType::Query, QState::Submitted)))
+                Context::QTextSubmitted(_query)
             ) => {
-                self.context = Context::Query(Some((QType::CopyBoth, QState::SendData)));
+                self.context = Context::CopyBoth(CBState::Data( CBData { start_lsn: 0, last_commit_lsn: 0, relation_cache: HashMap::new() }));
                 let message = CopyBothResponse::try_from(&mut raw_message.clone())?;
                 debug!("DETAIL: {message:?}");
                 self.fe_stream.put_raw_message(raw_message)?;
@@ -277,13 +404,12 @@ impl PassThruMachine {
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::CopyData),
-                Context::Query(Some((QType::CopyBoth, QState::SendData)))
+                Context::CopyBoth(CBState::Data(_))
             ) => {
-                if self.streaming_replication(&mut raw_message.clone())? {
+                if self.streaming_replication(raw_message)? {
                     self.read_from = ReadFrom::PreferBackend;
                 }
-                self.fe_stream.put_raw_message(raw_message)?;
-            }
+            },
 
             // We are streaming data from the frontend in CopyBoth. The next message should
             // come from the frontend en be either CopyData or CopyDone.
@@ -291,10 +417,21 @@ impl PassThruMachine {
             (
                 Some(_),
                 Message::Frontend(FrontendMessageKind::CopyData),
-                Context::Query(Some((QType::CopyBoth, QState::SendData)))
+                Context::CopyBoth(CBState::Data(_))
             ) => {
-                self.streaming_replication(&mut raw_message.clone())?;
-                self.be_stream.put_raw_message(raw_message)?;
+                self.streaming_replication(raw_message)?;
+            }
+
+            // We are done streaming data from CopyBoth. The next message should also come from
+            // the backend and be CommandComplete.
+            #[cfg_attr(rustfmt, rustfmt_skip)]
+            (
+                Some(_),
+                Message::Backend(BackendMessageKind::CommandComplete),
+                Context::CopyBoth(CBState::Data(_))
+            ) => {
+                self.context = Context::CopyBoth(CBState::Done);
+                self.fe_stream.put_raw_message(raw_message)?;
             }
 
             // Async message can happend anytime, they can change the state
@@ -337,6 +474,7 @@ impl PassThruMachine {
 
             // The Frontend can terminate gracefully the connection with Terminate
             (_, Message::Frontend(FrontendMessageKind::Terminate), _) => {
+                self.be_stream.put_raw_message(raw_message)?;
                 self.context = Context::Disconnected;
             }
 
@@ -359,7 +497,7 @@ impl PassThruMachine {
         }
 
         self.last_message_kind = Some(current_message_kind);
-        Ok(self.context)
+        Ok(self.context.clone())
     }
 
     fn get_message(&mut self) -> anyhow::Result<(Message, RawMessage)> {
@@ -411,11 +549,14 @@ impl PassThruMachine {
         }
     }
 
-    fn streaming_replication(&mut self, raw_message: &mut RawMessage) -> anyhow::Result<bool> {
+    fn streaming_replication(&mut self, mut raw_message: RawMessage) -> anyhow::Result<bool> {
         let mut needs_feedback = false;
 
         // we can try from FrontendMessageKind::CopyData or BackendMessageKind it doesn't matter
+        // the header is te same.
         if let BackendMessageKind::CopyData = BackendMessageKind::try_from(&raw_message.kind)? {
+            let saved_raw_message = raw_message.clone();
+
             let xlog_data_header = StreamingHeader::deserialize(&mut raw_message.raw_body)?;
             debug!(
                 "DETAIL: {:?} {:?}",
@@ -443,22 +584,117 @@ impl PassThruMachine {
                             debug!("DETAIL: {:?}", message,);
                         }
                         LogicalReplicationMessageKind::Insert => {
-                            let message = Insert::deserialize(&mut raw_message.raw_body)?;
-                            debug!("DETAIL: {:?}", message,);
+                            let mut insert_message =
+                                Insert::deserialize(&mut raw_message.raw_body)?;
+                            debug!("DETAIL: {:?}", insert_message,);
+
+                            if self.anonymize {
+                                // modify the message
+                                let new_value = match decode_from_text(
+                                    &insert_message.new_tuple_data.columns[0].column_value,
+                                    &PgType::Int8,
+                                ) {
+                                    Ok(PgToRustTypes::Int8(value)) => value,
+                                    _ => return Err(anyhow!("Incompatible type")),
+                                };
+
+                                let new_value = new_value * -10;
+                                insert_message.new_tuple_data.columns[0].column_value =
+                                    Bytes::from(new_value.to_string());
+                                debug!("DETAIL: Anonymize {:?}", insert_message,);
+
+                                // create a new one and send it
+                                self.fe_stream.put_raw_message(
+                                    create_logical_replication_message(
+                                        &xlog_data_body,
+                                        &insert_message,
+                                    ),
+                                )?;
+
+                                return Ok(false);
+                            }
                         }
                         LogicalReplicationMessageKind::Update => {
-                            let message = Update::deserialize(&mut raw_message.raw_body)?;
-                            debug!("DETAIL: {:?}", message,);
+                            let mut update_message =
+                                Update::deserialize(&mut raw_message.raw_body)?;
+                            debug!("DETAIL: {:?}", update_message,);
+
+                            if self.anonymize {
+                                let new_value = match decode_from_text(
+                                    &update_message.new_tuple_data.columns[0].column_value,
+                                    &PgType::Int8,
+                                ) {
+                                    Ok(PgToRustTypes::Int8(value)) => value,
+                                    _ => return Err(anyhow!("Incompatible type")),
+                                };
+
+                                let old_value = match decode_from_text(
+                                    &update_message.old_tuple_data.columns[0].column_value,
+                                    &PgType::Int8,
+                                ) {
+                                    Ok(PgToRustTypes::Int8(value)) => value,
+                                    _ => return Err(anyhow!("Incompatible type")),
+                                };
+
+                                // modify the message
+                                let new_value = new_value * -10;
+                                update_message.new_tuple_data.columns[0].column_value =
+                                    Bytes::from(new_value.to_string());
+
+                                let old_value = old_value * -10;
+                                update_message.old_tuple_data.columns[0].column_value =
+                                    Bytes::from(old_value.to_string());
+
+                                debug!("DETAIL: Anonymize {:?}", update_message,);
+
+                                // create a new one and send it
+                                self.fe_stream.put_raw_message(
+                                    create_logical_replication_message(
+                                        &xlog_data_body,
+                                        &update_message,
+                                    ),
+                                )?;
+
+                                return Ok(false);
+                            }
                         }
                         LogicalReplicationMessageKind::Delete => {
-                            let message = Delete::deserialize(&mut raw_message.raw_body)?;
-                            debug!("DETAIL: {:?}", message,);
+                            let mut delete_message =
+                                Delete::deserialize(&mut raw_message.raw_body)?;
+                            debug!("DETAIL: {:?}", delete_message,);
+
+                            if self.anonymize {
+                                let old_value = match decode_from_text(
+                                    &delete_message.old_tuple_data.columns[0].column_value,
+                                    &PgType::Int8,
+                                ) {
+                                    Ok(PgToRustTypes::Int8(value)) => value,
+                                    _ => return Err(anyhow!("Incompatible type")),
+                                };
+
+                                let old_value = old_value * -10;
+                                delete_message.old_tuple_data.columns[0].column_value =
+                                    Bytes::from(old_value.to_string());
+
+                                debug!("DETAIL: Anonymized {:?}", delete_message,);
+
+                                // create a new one and send it
+                                self.fe_stream.put_raw_message(
+                                    create_logical_replication_message(
+                                        &xlog_data_body,
+                                        &delete_message,
+                                    ),
+                                )?;
+
+                                return Ok(false);
+                            }
                         }
                         _ => debug!(
                             "Unsupported message: {:?}",
                             LogicalReplicationMessageKind::try_from(header.message_type)?
                         ),
                     };
+                    self.fe_stream.put_raw_message(saved_raw_message)?;
                 }
                 StreamingReplicationMessageKind::PrimaryKeepAliveMessage => {
                     let primary_keep_alive_message =
@@ -466,44 +702,19 @@ impl PassThruMachine {
                     debug!("DETAIL: {:?}", primary_keep_alive_message,);
                     needs_feedback = true;
 
-                    // let standby_status_update = StandbyStatusUpdate {
-                    //     reveived_lsn: self.streaming_data.expect("streaming_data should be Some in streaming").start_lsn + 1,
-                    //     flush_lsn: self.streaming_data.expect("streaming_data should be Some in streaming").start_lsn + 1,
-                    //     applied_lsn: self.streaming_data.expect("streaming_data should be Some in streaming").start_lsn + 1,
-                    //     timestamp: primary_keep_alive_message.timestamp + 1,
-                    //     urgency: 0,
-                    // };
-                    // let copy_data = CopyData {};
-
-                    // let mut buffer_body = BytesMut::new();
-                    // copy_data.serialize(&mut buffer_body);
-                    // StreamingHeader { message_type: standby_status_update.message_type() as i8 }.serialize(&mut buffer_body);
-                    // standby_status_update.serialize(&mut buffer_body);
-
-                    // let mut buffer_header = BytesMut::new();
-                    // MessageHeader {
-                    //     message_type: u8::from(&FrontendMessageKind::CopyData),
-                    //     length: buffer_body.len() as i32 + 4
-                    // }.serialize(&mut buffer_header);
-
-                    // let raw_copy_data = RawMessage {
-                    //     kind: RawMessageKind { main: u8::from(&FrontendMessageKind::CopyData), auth: None },
-                    //     raw_header: buffer_header.into(),
-                    //     raw_body: buffer_body.into(),
-                    // };
-                    // debug!("snd: StandbyStatusUpdate");
-
-                    // self.tcp_writer.put_raw_message_and_flush(raw_copy_data)?;
+                    self.fe_stream.put_raw_message(saved_raw_message)?;
                 }
                 StreamingReplicationMessageKind::StandbyStatusUpdate => {
                     let standby_system_update_message =
                         StandbyStatusUpdate::deserialize(&mut raw_message.raw_body)?;
                     debug!("DETAIL: {:?}", standby_system_update_message,);
+
+                    self.be_stream.put_raw_message(saved_raw_message)?;
                 }
                 _ => (),
             }
         } else {
-            unreachable!("streaming_replication() only receives CopyData messages");
+            unreachable!("streaming_replication() only uses CopyData messages");
         }
 
         Ok(needs_feedback)
@@ -518,4 +729,44 @@ fn lsn_split(value: i64) -> (i32, i32) {
 
 fn lsn_create(upper: i32, lower: i32) -> i64 {
     (upper as i64) << 32 | (lower as i64)
+}
+
+fn create_logical_replication_message<T>(
+    xlog_data_body: &XLogData,
+    logical_message_body: &T,
+) -> RawMessage
+where
+    T: Serialize + MessageBody,
+{
+    // Reconstruct the streaming message
+    let mut buffer_body = BytesMut::new();
+    StreamingHeader {
+        message_type: xlog_data_body.message_type() as i8,
+    }
+    .serialize(&mut buffer_body);
+    xlog_data_body.serialize(&mut buffer_body);
+
+    // Reconstruct the logical message
+    LogicalHeader {
+        message_type: logical_message_body.message_type() as i8,
+    }
+    .serialize(&mut buffer_body);
+    logical_message_body.serialize(&mut buffer_body);
+
+    // Reconstruct CopyData message
+    let mut buffer_header = BytesMut::new();
+    MessageHeader {
+        message_type: u8::from(&BackendMessageKind::CopyData),
+        length: buffer_body.len() as i32 + 4,
+    }
+    .serialize(&mut buffer_header);
+
+    RawMessage {
+        kind: RawMessageKind {
+            main: u8::from(&FrontendMessageKind::CopyData),
+            auth: None,
+        },
+        raw_header: buffer_header.into(),
+        raw_body: buffer_body.into(),
+    }
 }
