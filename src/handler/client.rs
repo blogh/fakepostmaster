@@ -1,14 +1,17 @@
 use anyhow::anyhow;
+use libpq_serde_types::libpq_types::NullLength;
+use libpq_serde_types::libpq_types::VecWithEncoding;
 use std::collections::HashMap;
 use std::net::TcpStream;
 use tracing::*;
 
 use libpq_serde_types::Deserialize;
 
-use super::{LibPqReader, LibPqWriter, PgToRustTypes, PgType, decode_from_text};
+use super::{PgToRustTypes, PgType, decode_from_text};
 use crate::message::logical_message::*;
 use crate::message::message::*;
 use crate::message::streaming_message::*;
+use crate::message::{MessageBuilder, MessageType, RawMessage};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -200,18 +203,22 @@ impl ClientMachine {
         let mut query = query;
         query.reverse();
 
-        let startup_message = StartupMessage::new(
-            ProtocolVersion { major: 3, minor: 0 },
-            vec![
-                ParameterStatus::new(&(String::from("user")), &user)?,
-                ParameterStatus::new(&(String::from("database")), &database)?,
-                ParameterStatus::new(&(String::from("application_name")), &application_name)?,
-                ParameterStatus::new(&(String::from("replication")), &replication)?,
-                ParameterStatus::new(&(String::from("client_encoding")), &(String::from("utf8")))?,
-            ],
-        );
-        let client_parameters = HashMap::<String, String>::try_from(&startup_message)?;
-        tcp_stream.put_request(startup_message)?;
+        let startup_message =
+            MessageBuilder::new_frontend_message().startup_message(StartupMessage {
+                protocol_version: ProtocolVersion { major: 3, minor: 0 },
+                parameters: VecWithEncoding::<ParameterStatus, NullLength>::from(vec![
+                    ParameterStatus::new(&(String::from("user")), &user)?,
+                    ParameterStatus::new(&(String::from("database")), &database)?,
+                    ParameterStatus::new(&(String::from("application_name")), &application_name)?,
+                    ParameterStatus::new(&(String::from("replication")), &replication)?,
+                    ParameterStatus::new(
+                        &(String::from("client_encoding")),
+                        &(String::from("utf8")),
+                    )?,
+                ]),
+            });
+        let client_parameters = HashMap::<String, String>::try_from(startup_message.main_as_ref())?;
+        startup_message.into_raw_message().send(&mut tcp_stream)?;
 
         Ok(Self {
             last_message_kind: None,
@@ -243,12 +250,14 @@ impl ClientMachine {
             ) => {
                 let message = AuthenticationMD5Password::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:?}");
-                self.tcp_stream
-                    .put_message(PasswordMessage::new_from_user_password(
+                MessageBuilder::new_frontend_message()
+                    .password_message(PasswordMessage::new_from_user_password(
                         &self.user,
                         &self.password,
                         &message.salt,
-                    )?)?;
+                    )?)
+                    .into_raw_message()
+                    .send(&mut self.tcp_stream)?;
             }
 
             // BackendKeyData hold secret data send from the server and the process PID
@@ -288,7 +297,10 @@ impl ClientMachine {
                 match self.query.pop() {
                     // We still have queries to process
                     Some(query) => {
-                        self.tcp_stream.put_message(Query::new(query.clone())?)?;
+                        MessageBuilder::new_frontend_message()
+                            .query(Query::new(query.clone())?)
+                            .into_raw_message()
+                            .send(&mut self.tcp_stream)?;
                         self.context = Context::QTextSubmitted(query);
                     }
                     // No more queries: exit
@@ -360,7 +372,7 @@ impl ClientMachine {
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::CopyOutResponse),
-                Context::QTextSubmitted(query)
+                Context::QTextSubmitted(_query)
             ) => {
                 self.context = Context::CopyOut(COState::Data);
                 let message = CopyOutResponse::try_from(&mut raw_message)?;
@@ -395,7 +407,7 @@ impl ClientMachine {
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::CopyInResponse),
-                Context::QTextSubmitted(query)
+                Context::QTextSubmitted(_query)
             ) => {
                 self.context = Context::CopyIn(CIState::Data);
                 let message = CopyInResponse::try_from(&mut raw_message)?;
@@ -431,7 +443,7 @@ impl ClientMachine {
             (
                 Some(_),
                 Message::Backend(BackendMessageKind::CopyBothResponse),
-                Context::QTextSubmitted(query)
+                Context::QTextSubmitted(_query)
             ) => {
                 //FIXME:rework init
                 self.context = Context::CopyBoth(
@@ -534,32 +546,35 @@ impl ClientMachine {
         Ok(self.context.clone())
     }
 
-    fn get_message(&mut self) -> anyhow::Result<(Message, RawMessage)> {
-        let message = self.tcp_stream.get_raw_backend_message()?;
+    fn get_message(&mut self) -> anyhow::Result<(Message, RawMessage<MessageType>)> {
+        let message = RawMessage::<MessageType>::receive(&mut self.tcp_stream)?;
         Ok((
-            Message::Backend(BackendMessageKind::try_from(&message.kind)?),
+            Message::Backend(BackendMessageKind::try_from(&message.mtype)?),
             message,
         ))
     }
 
-    fn streaming_replication(&mut self, raw_message: &mut RawMessage) -> anyhow::Result<()> {
-        if let BackendMessageKind::CopyData = BackendMessageKind::try_from(&raw_message.kind)? {
-            let xlog_data_header = StreamingHeader::deserialize(&mut raw_message.raw_body)?;
+    fn streaming_replication(
+        &mut self,
+        raw_message: &mut RawMessage<MessageType>,
+    ) -> anyhow::Result<()> {
+        if let BackendMessageKind::CopyData = BackendMessageKind::try_from(&raw_message.mtype)? {
+            let xlog_data_header = StreamingHeader::deserialize(&mut raw_message.body)?;
             debug!(
                 "DETAIL: {:?} {:?}",
-                raw_message.kind,
+                raw_message.mtype,
                 StreamingReplicationMessageKind::try_from(xlog_data_header.message_type)?,
             );
 
             match StreamingReplicationMessageKind::try_from(xlog_data_header.message_type)? {
                 StreamingReplicationMessageKind::XLogData => {
-                    let xlog_data_body = XLogData::deserialize(&mut raw_message.raw_body)?;
+                    let xlog_data_body = XLogData::deserialize(&mut raw_message.body)?;
                     debug!("DETAIL: {:?}", xlog_data_body,);
 
-                    let header = LogicalHeader::deserialize(&mut raw_message.raw_body)?;
+                    let header = LogicalHeader::deserialize(&mut raw_message.body)?;
                     match LogicalReplicationMessageKind::try_from(header.message_type)? {
                         LogicalReplicationMessageKind::Relation => {
-                            let message = Relation::deserialize(&mut raw_message.raw_body)?;
+                            let message = Relation::deserialize(&mut raw_message.body)?;
                             debug!("DETAIL: {:?}", message,);
 
                             //FIXME: probably do something with else? or assert that we are in the
@@ -571,11 +586,11 @@ impl ClientMachine {
                             }
                         }
                         LogicalReplicationMessageKind::Begin => {
-                            let message = Begin::deserialize(&mut raw_message.raw_body)?;
+                            let message = Begin::deserialize(&mut raw_message.body)?;
                             debug!("DETAIL: {:?}", message,);
                         }
                         LogicalReplicationMessageKind::Commit => {
-                            let message = Commit::deserialize(&mut raw_message.raw_body)?;
+                            let message = Commit::deserialize(&mut raw_message.body)?;
                             debug!("DETAIL: {:?}", message,);
 
                             //FIXME: probably do something with else? or assert that we are in the
@@ -585,7 +600,7 @@ impl ClientMachine {
                             }
                         }
                         LogicalReplicationMessageKind::Insert => {
-                            let message = Insert::deserialize(&mut raw_message.raw_body)?;
+                            let message = Insert::deserialize(&mut raw_message.body)?;
                             debug!("DETAIL: {:?}", message,);
 
                             if let Context::CopyBoth(CBState::Data(ref cbdata)) = self.context {
@@ -617,8 +632,8 @@ impl ClientMachine {
                             }
                         }
                         LogicalReplicationMessageKind::Update => {
-                            debug!("UPDATE: {:?}", raw_message.raw_body);
-                            let message = Update::deserialize(&mut raw_message.raw_body)?;
+                            debug!("UPDATE: {:?}", raw_message.body);
+                            let message = Update::deserialize(&mut raw_message.body)?;
                             debug!("DETAIL: {:?}", message,);
 
                             if let Context::CopyBoth(CBState::Data(ref cbdata)) = self.context {
@@ -662,7 +677,7 @@ impl ClientMachine {
                             }
                         }
                         LogicalReplicationMessageKind::Delete => {
-                            let message = Delete::deserialize(&mut raw_message.raw_body)?;
+                            let message = Delete::deserialize(&mut raw_message.body)?;
                             debug!("DETAIL: {:?}", message,);
 
                             if let Context::CopyBoth(CBState::Data(ref cbdata)) = self.context {
@@ -701,7 +716,7 @@ impl ClientMachine {
                 }
                 StreamingReplicationMessageKind::PrimaryKeepAliveMessage => {
                     let primary_keep_alive_message =
-                        PrimaryKeepAliveMessage::deserialize(&mut raw_message.raw_body)?;
+                        PrimaryKeepAliveMessage::deserialize(&mut raw_message.body)?;
                     debug!("DETAIL: {:?}", primary_keep_alive_message,);
 
                     // let standby_status_update = StandbyStatusUpdate {
