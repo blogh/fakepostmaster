@@ -1,414 +1,21 @@
 use anyhow::anyhow;
-use bytes::{BufMut, Bytes, BytesMut};
-use libpq_serde_macros::{MessageBody, SerdeLibpqData, TryFromRawMessage};
-use libpq_serde_types::{
-    ByteSized, Deserialize, Serialize,
-    libpq_types::{Byte, Byte4, Length16, NullLength, VecWithEncoding},
-};
+use bytes::Bytes;
 use md5::{Digest, Md5};
 use std::collections::HashMap;
 use std::ffi::CString;
-use std::io::Read;
-use std::net::TcpStream;
+
+use libpq_serde_macros::{MessageBody, SerdeLibpqData, TryFromRawMessage};
+use libpq_serde_types::{
+    Deserialize,
+    libpq_types::{Byte, Byte4, Length16, NullLength, VecWithEncoding},
+};
+
+use super::raw_message::{MessageType, RawMessage, RequestBody, RequestType};
 
 // The list of messages can be found here and has been copied below (v17):
 // * https://www.postgresql.org/docs/17/protocol-flow.html
 // * https://www.postgresql.org/docs/17/protocol-message-formats.html
 
-//*----------------------------------------------------------------------------
-// Requests handling
-//*----------------------------------------------------------------------------
-
-/// RequestMessage are send by the frontend to start a connection
-/// This trait is used for all such messages.
-pub trait RequestBody {}
-
-#[derive(Debug, PartialEq, SerdeLibpqData)]
-pub struct RequestHeader {
-    pub length: i32,
-}
-
-/// This struct contains the raw request which can be transformed into
-/// a request message body after via the implementation of TryFrom().
-///
-/// The following Request types are not supported:
-/// * CancelRequest,
-/// * GSSENCRequest,
-/// * SSLRequest,
-#[derive(Debug)]
-pub struct RawRequest {
-    pub header: RequestHeader,
-    pub request_kind: RequestMessageKind,
-    pub raw_body: Bytes,
-}
-
-impl RawRequest {
-    pub fn get(read_stream: &mut TcpStream) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
-        let mut buffer = vec![0_u8; 4];
-        read_stream.read_exact(&mut buffer)?;
-        let header = RequestHeader::deserialize(&mut Bytes::from(buffer))?;
-
-        let mut buffer = vec![0_u8; (header.length - 4) as usize];
-        read_stream.read_exact(&mut buffer)?;
-        let raw_body = Bytes::from(buffer);
-
-        let mut msg_kind = [0_u8; 4];
-        msg_kind.copy_from_slice(&raw_body[0..4]);
-        let request_kind = i32::from_be_bytes(msg_kind);
-        let request_kind = RequestMessageKind::try_from(request_kind)?;
-
-        Ok(Self {
-            header,
-            request_kind,
-            raw_body,
-        })
-    }
-}
-
-/// All the requests sent by the frontend
-#[derive(Debug, Clone)]
-pub enum RequestMessageKind {
-    StartupMessage,
-    CancelRequest,
-    GSSENCRequest,
-    SSLRequest,
-}
-
-impl From<&RequestMessageKind> for i32 {
-    fn from(msg_kind: &RequestMessageKind) -> i32 {
-        match msg_kind {
-            &RequestMessageKind::StartupMessage => 196608,
-            &RequestMessageKind::CancelRequest => 80877102,
-            &RequestMessageKind::GSSENCRequest => 80877104,
-            &RequestMessageKind::SSLRequest => 80877103,
-        }
-    }
-}
-
-impl TryFrom<i32> for RequestMessageKind {
-    type Error = anyhow::Error;
-
-    fn try_from(request_code: i32) -> anyhow::Result<RequestMessageKind> {
-        match request_code {
-            196608 => Ok(Self::StartupMessage),
-            80877102 => Ok(Self::CancelRequest),
-            80877104 => Ok(Self::GSSENCRequest),
-            80877103 => Ok(Self::SSLRequest),
-            _ => Err(anyhow!("Invalid request message: {request_code}")),
-        }
-    }
-}
-
-//*----------------------------------------------------------------------------
-// BackendMessage & FrontendMessage common stuff
-//*----------------------------------------------------------------------------
-
-#[derive(Debug, PartialEq, SerdeLibpqData)]
-pub struct MessageHeader {
-    pub message_type: u8,
-    pub length: i32,
-}
-
-impl MessageHeader {
-    pub fn new_header_from_body<T>(body: &T) -> Self
-    where
-        T: MessageBody + ByteSized,
-    {
-        Self {
-            message_type: body.message_type(),
-            length: body.byte_size() + 4,
-        }
-    }
-
-    pub fn new_raw_header_from_body<T>(buffer: &mut BytesMut, body: &T)
-    where
-        T: MessageBody + ByteSized,
-    {
-        buffer.put_u8(body.message_type());
-        buffer.put_i32(body.byte_size() + 4);
-    }
-}
-
-/// A body has a type
-pub trait MessageBody {
-    fn message_type(&self) -> u8;
-}
-
-#[derive(Clone)]
-pub struct RawMessageKind {
-    pub main: u8,
-    pub auth: Option<i32>,
-}
-
-impl std::fmt::Debug for RawMessageKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "RawMessageKind {{ main: 0x{:x?}, auth: {:?} }}",
-            self.main, self.auth
-        )
-    }
-}
-
-#[derive(Clone)]
-pub struct RawMessage {
-    pub kind: RawMessageKind,
-    pub raw_header: Bytes,
-    pub raw_body: Bytes,
-}
-
-impl std::fmt::Debug for RawMessage {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "RawMessage {{ kind: {:?}, raw_header: hex{:x?}, raw_body hex{:x?} txt{:?} }}",
-            self.kind,
-            self.raw_header.to_vec(),
-            self.raw_body.to_vec(),
-            self.raw_body
-        )
-    }
-}
-
-impl RawMessage {
-    pub fn get(read_stream: &mut TcpStream) -> anyhow::Result<Self> {
-        let mut buffer = vec![0_u8; 4 + 1];
-        read_stream.read_exact(&mut buffer)?;
-        let raw_header = Bytes::from(buffer.clone());
-        let header = MessageHeader::deserialize(&mut Bytes::from(buffer))?;
-
-        let mut buffer = vec![0_u8; (header.length - 4) as usize];
-        read_stream.read_exact(&mut buffer)?;
-        let raw_body = Bytes::from(buffer);
-
-        let auth_kind = match header.message_type {
-            0x52 /* 'R' */ => {
-                let mut msg_kind = [0_u8; 4];
-                msg_kind.copy_from_slice(&raw_body[0..4]);
-                Some(i32::from_be_bytes(msg_kind))
-            }
-            _ => None,
-        };
-
-        Ok(Self {
-            kind: RawMessageKind {
-                main: header.message_type,
-                auth: auth_kind,
-            },
-            raw_header,
-            raw_body,
-        })
-    }
-}
-
-impl TryFrom<&RawMessageKind> for BackendMessageKind {
-    type Error = anyhow::Error;
-    fn try_from(msg_kind: &RawMessageKind) -> anyhow::Result<BackendMessageKind> {
-        match msg_kind {
-            &RawMessageKind {
-                main: 0x52, /* 'R' */
-                auth: Some(0),
-            } => Ok(BackendMessageKind::AuthenticationOk),
-            &RawMessageKind {
-                main: 0x52, /* 'R' */
-                auth: Some(2),
-            } => Ok(BackendMessageKind::AuthenticationKerberosV5),
-            &RawMessageKind {
-                main: 0x52, /* 'R' */
-                auth: Some(3),
-            } => Ok(BackendMessageKind::AuthenticationCleartextPassword),
-            &RawMessageKind {
-                main: 0x52, /* 'R' */
-                auth: Some(5),
-            } => Ok(BackendMessageKind::AuthenticationMD5Password),
-            &RawMessageKind {
-                main: 0x52, /* 'R' */
-                auth: Some(7),
-            } => Ok(BackendMessageKind::AuthenticationGSS),
-            &RawMessageKind {
-                main: 0x52, /* 'R' */
-                auth: Some(8),
-            } => Ok(BackendMessageKind::AuthenticationGSSContinue),
-            &RawMessageKind {
-                main: 0x52, /* 'R' */
-                auth: Some(9),
-            } => Ok(BackendMessageKind::AuthenticationSSPI),
-            &RawMessageKind {
-                main: 0x52, /* 'R' */
-                auth: Some(10),
-            } => Ok(BackendMessageKind::AuthenticationSASL),
-            &RawMessageKind {
-                main: 0x52, /* 'R' */
-                auth: Some(11),
-            } => Ok(BackendMessageKind::AuthenticationSASLContinue),
-            &RawMessageKind {
-                main: 0x52, /* 'R' */
-                auth: Some(12),
-            } => Ok(BackendMessageKind::AuthenticationSASLFinal),
-            &RawMessageKind {
-                main: 0x4b, /* 'K' */
-                auth: None,
-            } => Ok(BackendMessageKind::BackendKeyData),
-            &RawMessageKind {
-                main: 0x32, /* '2' */
-                auth: None,
-            } => Ok(BackendMessageKind::BindComplete),
-            &RawMessageKind {
-                main: 0x33, /* '3' */
-                auth: None,
-            } => Ok(BackendMessageKind::CloseComplete),
-            &RawMessageKind {
-                main: 0x43, /* 'C' */
-                auth: None,
-            } => Ok(BackendMessageKind::CommandComplete),
-            &RawMessageKind {
-                main: 0x64, /* 'd' */
-                auth: None,
-            } => Ok(BackendMessageKind::CopyData),
-            &RawMessageKind {
-                main: 0x63, /* 'x' */
-                auth: None,
-            } => Ok(BackendMessageKind::CopyDone),
-            &RawMessageKind {
-                main: 0x47, /* 'G' */
-                auth: None,
-            } => Ok(BackendMessageKind::CopyInResponse),
-            &RawMessageKind {
-                main: 0x48, /* 'H' */
-                auth: None,
-            } => Ok(BackendMessageKind::CopyOutResponse),
-            &RawMessageKind {
-                main: 0x57, /* 'W' */
-                auth: None,
-            } => Ok(BackendMessageKind::CopyBothResponse),
-            &RawMessageKind {
-                main: 0x44, /* 'D' */
-                auth: None,
-            } => Ok(BackendMessageKind::DataRow),
-            &RawMessageKind {
-                main: 0x49, /* 'I' */
-                auth: None,
-            } => Ok(BackendMessageKind::EmptyQuery),
-            &RawMessageKind {
-                main: 0x45, /* 'E' */
-                auth: None,
-            } => Ok(BackendMessageKind::ErrorResponse),
-            &RawMessageKind {
-                main: 0x56, /* 'V' */
-                auth: None,
-            } => Ok(BackendMessageKind::FunctionCallResponse),
-            &RawMessageKind {
-                main: 0x76, /* 'v' */
-                auth: None,
-            } => Ok(BackendMessageKind::NegotiateProtocolVersion),
-            &RawMessageKind {
-                main: 0x6e, /* 'n' */
-                auth: None,
-            } => Ok(BackendMessageKind::NoData),
-            &RawMessageKind {
-                main: 0x4e, /* 'N' */
-                auth: None,
-            } => Ok(BackendMessageKind::NoticeResponse),
-            &RawMessageKind {
-                main: 0x41, /* 'A' */
-                auth: None,
-            } => Ok(BackendMessageKind::NotificationResponse),
-            &RawMessageKind {
-                main: 0x74, /* 't' */
-                auth: None,
-            } => Ok(BackendMessageKind::ParameterDescription),
-            &RawMessageKind {
-                main: 0x53, /* 'S' */
-                auth: None,
-            } => Ok(BackendMessageKind::ParameterStatus),
-            &RawMessageKind {
-                main: 0x31, /* '1' */
-                auth: None,
-            } => Ok(BackendMessageKind::ParseComplete),
-            &RawMessageKind {
-                main: 0x73, /* 's' */
-                auth: None,
-            } => Ok(BackendMessageKind::PortalSuspended),
-            &RawMessageKind {
-                main: 0x5a, /* 'Z' */
-                auth: None,
-            } => Ok(BackendMessageKind::ReadyForQuery),
-            &RawMessageKind {
-                main: 0x54, /* 'T' */
-                auth: None,
-            } => Ok(BackendMessageKind::RowDescription),
-            _ => Err(anyhow!("Unsupported backend message: {:?}", msg_kind)),
-        }
-    }
-}
-
-impl TryFrom<&RawMessageKind> for FrontendMessageKind {
-    type Error = anyhow::Error;
-
-    fn try_from(msg_kind: &RawMessageKind) -> anyhow::Result<FrontendMessageKind> {
-        match msg_kind {
-            &RawMessageKind {
-                main: 0x42, /* 'B' */
-                auth: None,
-            } => Ok(FrontendMessageKind::Bind),
-            &RawMessageKind {
-                main: 0x43, /* 'C' */
-                auth: None,
-            } => Ok(FrontendMessageKind::Close),
-            &RawMessageKind {
-                main: 0x64, /* 'd' */
-                auth: None,
-            } => Ok(FrontendMessageKind::CopyData),
-            &RawMessageKind {
-                main: 0x63, /* 'c' */
-                auth: None,
-            } => Ok(FrontendMessageKind::CopyDone),
-            &RawMessageKind {
-                main: 0x66, /* 'f' */
-                auth: None,
-            } => Ok(FrontendMessageKind::CopyFail),
-            &RawMessageKind {
-                main: 0x44, /* 'D' */
-                auth: None,
-            } => Ok(FrontendMessageKind::Describe),
-            &RawMessageKind {
-                main: 0x45, /* 'E' */
-                auth: None,
-            } => Ok(FrontendMessageKind::Execute),
-            &RawMessageKind {
-                main: 0x46, /* 'F' */
-                auth: None,
-            } => Ok(FrontendMessageKind::Flush),
-            &RawMessageKind {
-                main: 0x48, /* 'H' */
-                auth: None,
-            } => Ok(FrontendMessageKind::FunctionCall),
-            &RawMessageKind {
-                main: 0x51, /* 'Q' */
-                auth: None,
-            } => Ok(FrontendMessageKind::Query),
-            &RawMessageKind {
-                main: 0x58, /* 'X' */
-                auth: None,
-            } => Ok(FrontendMessageKind::Terminate),
-            &RawMessageKind {
-                main: 0x70, /* 'p' */
-                auth: None,
-            } => Ok(FrontendMessageKind::ContextDependant),
-            &RawMessageKind {
-                main: 0x50, /* 'P' */
-                auth: None,
-            } => Ok(FrontendMessageKind::Parse),
-            _ => Err(anyhow!(
-                "Unsupported code for frontend message: {:?}",
-                msg_kind
-            )),
-        }
-    }
-}
 //*----------------------------------------------------------------------------
 // BackendMessage
 //*----------------------------------------------------------------------------
@@ -678,12 +285,13 @@ impl AuthenticationOk {
 }
 
 // Auth message cannot derive TryFromRawMessage they have a specific implementation
-impl TryFrom<&mut RawMessage> for AuthenticationOk {
+impl TryFrom<&mut RawMessage<MessageType>> for AuthenticationOk {
     type Error = anyhow::Error;
 
-    fn try_from(message: &mut RawMessage) -> anyhow::Result<AuthenticationOk> {
-        if let BackendMessageKind::AuthenticationOk = BackendMessageKind::try_from(&message.kind)? {
-            return AuthenticationOk::deserialize(&mut message.raw_body);
+    fn try_from(message: &mut RawMessage<MessageType>) -> anyhow::Result<AuthenticationOk> {
+        if let BackendMessageKind::AuthenticationOk = BackendMessageKind::try_from(&message.mtype)?
+        {
+            return AuthenticationOk::deserialize(&mut message.body);
         }
         Err(anyhow!(
             "Impossible to create AuthenticationOk from RawBackendMessage"
@@ -723,14 +331,16 @@ impl AuthenticationMD5Password {
 }
 
 // Auth message cannot derive TryFromRawMessage they have a specific implementation
-impl TryFrom<&mut RawMessage> for AuthenticationMD5Password {
+impl TryFrom<&mut RawMessage<MessageType>> for AuthenticationMD5Password {
     type Error = anyhow::Error;
 
-    fn try_from(message: &mut RawMessage) -> anyhow::Result<AuthenticationMD5Password> {
+    fn try_from(
+        message: &mut RawMessage<MessageType>,
+    ) -> anyhow::Result<AuthenticationMD5Password> {
         if let BackendMessageKind::AuthenticationMD5Password =
-            BackendMessageKind::try_from(&message.kind)?
+            BackendMessageKind::try_from(&message.mtype)?
         {
-            return AuthenticationMD5Password::deserialize(&mut message.raw_body);
+            return AuthenticationMD5Password::deserialize(&mut message.body);
         }
         Err(anyhow!(
             "Impossible to create AuthenticationMD5Password from RawBackendMessage"
@@ -1475,12 +1085,12 @@ impl StartupMessage {
 
 impl RequestBody for StartupMessage {}
 
-impl TryFrom<&mut RawRequest> for StartupMessage {
+impl TryFrom<&mut RawMessage<RequestType>> for StartupMessage {
     type Error = anyhow::Error;
 
-    fn try_from(request: &mut RawRequest) -> anyhow::Result<StartupMessage> {
-        if let RequestMessageKind::StartupMessage = request.request_kind {
-            StartupMessage::deserialize(&mut request.raw_body)
+    fn try_from(request: &mut RawMessage<RequestType>) -> anyhow::Result<StartupMessage> {
+        if let RequestType::StartupMessage = request.mtype {
+            StartupMessage::deserialize(&mut request.body)
         } else {
             Err(anyhow!(
                 "Impossible to create StarupMessage from RawRequest"
@@ -1524,7 +1134,10 @@ pub struct Terminate {}
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::message::MessageHeader;
+    use crate::message::logical_message::ColumnData;
     use bytes::{Bytes, BytesMut};
+    use libpq_serde_types::{ByteSized, Serialize};
 
     #[test]
     fn authentication_ok_serialize() -> anyhow::Result<()> {

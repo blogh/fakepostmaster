@@ -1,9 +1,7 @@
 use anyhow::anyhow;
 use bytes::Bytes;
 use libpq_serde_macros::{MessageBody, SerdeLibpqData};
-use libpq_serde_types::{ByteSized, Deserialize, Serialize, libpq_types::Byte};
-
-use super::message::MessageBody;
+use libpq_serde_types::{Deserialize, libpq_types::Byte};
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct StreamingHeader {

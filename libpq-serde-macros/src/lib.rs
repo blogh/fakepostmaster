@@ -228,11 +228,11 @@ fn try_from_raw_message_derive_macro2(
                 type Error = anyhow::Error;
 
                 fn try_from(message: &mut RawMessage) -> anyhow::Result<#ident> {
-                    if #kind as u8 == message.kind.main {
-                        #ident::deserialize(&mut message.raw_body)
+                    if #kind as u8 == message.mtype.main {
+                        #ident::deserialize(&mut message.body)
                     } else {
                         Err(anyhow!(
-                            "Impossible to create struct from RawMessage: {:?}", message.kind
+                            "Impossible to create struct from RawMessage: {:?}", message.mtype
                         ))
                     }
                 }

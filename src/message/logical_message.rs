@@ -1,14 +1,12 @@
 use anyhow::anyhow;
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::Bytes;
 use std::ffi::CString;
 
 use libpq_serde_macros::{MessageBody, SerdeLibpqData};
 use libpq_serde_types::{
-    ByteSized, Deserialize, Serialize,
+    Deserialize,
     libpq_types::{Byte, Length16, Length32, VecWithEncoding},
 };
-
-use super::message::MessageBody;
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct LogicalHeader {
