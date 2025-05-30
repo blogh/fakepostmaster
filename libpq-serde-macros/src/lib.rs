@@ -126,19 +126,19 @@ fn serde_libpq_data_derive_macro2(
         }
 
         Ok(quote! {
-            impl ByteSized for #ident {
+            impl libpq_serde_types::ByteSized for #ident {
                 fn byte_size(&self) -> i32 {
                     0 #(+ #fields_size)*
                 }
             }
 
-            impl Serialize for #ident {
+            impl libpq_serde_types::Serialize for #ident {
                 fn serialize(&self, buffer: &mut bytes::BytesMut) {
                     #(#fields_serialize)*
                 }
             }
 
-            impl Deserialize for #ident {
+            impl libpq_serde_types::Deserialize for #ident {
                 fn deserialize(buffer: &mut bytes::Bytes) -> anyhow::Result<Self>
                 where
                     Self: std::marker::Sized,
@@ -186,7 +186,7 @@ fn message_body_derive_macro2(
         let ident = &ast.ident;
 
         Ok(quote! {
-            impl MessageBody for #ident {
+            impl crate::message::MessageBody for #ident {
                 fn message_type(&self) -> u8 {
                     #kind as u8
                 }
@@ -224,10 +224,10 @@ fn try_from_raw_message_derive_macro2(
         let ident = &ast.ident;
 
         Ok(quote! {
-            impl TryFrom<&mut RawMessage> for #ident {
+            impl TryFrom<&mut crate::message::RawMessage<crate::message::MessageType>> for #ident where #ident: Deserialize{
                 type Error = anyhow::Error;
 
-                fn try_from(message: &mut RawMessage) -> anyhow::Result<#ident> {
+                fn try_from(message: &mut crate::message::RawMessage<crate::message::MessageType>) -> anyhow::Result<#ident> {
                     if #kind as u8 == message.mtype.main {
                         #ident::deserialize(&mut message.body)
                     } else {
