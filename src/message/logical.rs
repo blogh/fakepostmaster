@@ -188,11 +188,11 @@ pub struct Relation {
     pub namespace: CString,
     pub relname: CString,
     pub replica_identity: i8,
-    pub columns: VecWithEncoding<ColumnDescription, Length16>,
+    pub columns: VecWithEncoding<RColumnDescription, Length16>,
 }
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
-pub struct ColumnDescription {
+pub struct RColumnDescription {
     pub flag: i8,
     pub name: CString,
     pub type_oid: i32,

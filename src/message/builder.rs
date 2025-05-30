@@ -8,9 +8,9 @@ use super::raw_message::{
     MessageBody, MessageHeader, MessageType, RawMessage, RequestHeader, RequestType,
 };
 
-use super::logical_message::*;
-use super::message::*;
-use super::streaming_message::*;
+use super::fbprotocol::*;
+use super::logical::*;
+use super::streaming::*;
 
 //*----------------------------------------------------------------------------
 // MessageBuilder: structs

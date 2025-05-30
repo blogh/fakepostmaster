@@ -12,6 +12,8 @@ use libpq_serde_types::{
 
 use super::raw_message::{MessageType, RawMessage, RequestBody, RequestType};
 
+// This file contains all the messages from the frontend backend protocol.
+//
 // The list of messages can be found here and has been copied below (v17):
 // * https://www.postgresql.org/docs/17/protocol-flow.html
 // * https://www.postgresql.org/docs/17/protocol-message-formats.html
@@ -935,11 +937,11 @@ impl From<&TransactionIndicator> for Byte {
 #[message_body(kind = 'T')]
 pub struct RowDescription {
     // The serialization will create a length field
-    pub columns: VecWithEncoding<ColumnDescription, Length16>,
+    pub columns: VecWithEncoding<QColumnDescription, Length16>,
 }
 
 impl RowDescription {
-    pub fn new(columns: Vec<ColumnDescription>) -> Self {
+    pub fn new(columns: Vec<QColumnDescription>) -> Self {
         Self {
             columns: columns.into(),
         }
@@ -947,7 +949,7 @@ impl RowDescription {
 }
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
-pub struct ColumnDescription {
+pub struct QColumnDescription {
     pub name: CString,
     pub relation_id: i32,
     pub attribute_id: i16,
@@ -957,7 +959,7 @@ pub struct ColumnDescription {
     pub format: i16,
 }
 
-impl ColumnDescription {
+impl QColumnDescription {
     pub fn new(name: &String, pgtype: PgType) -> anyhow::Result<Self> {
         Ok(Self {
             name: CString::new(&name[..])?,

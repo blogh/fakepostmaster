@@ -7,7 +7,7 @@ use tracing::*;
 use libpq_serde_macros::SerdeLibpqData;
 use libpq_serde_types::Deserialize;
 
-use super::message::{BackendMessageKind, FrontendMessageKind};
+use super::fbprotocol::{BackendMessageKind, FrontendMessageKind};
 
 //*----------------------------------------------------------------------------
 // RawMessage
