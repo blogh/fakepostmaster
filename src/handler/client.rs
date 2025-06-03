@@ -740,6 +740,10 @@ impl ClientMachine {
                                 }
                             }
                         }
+                        LogicalReplicationMessageKind::Truncate => {
+                            let message = Truncate::deserialize(&mut raw_message.body)?;
+                            debug!("DETAIL: {:?}", message,);
+                        }
                         _ => debug!(
                             "Unsupported message: {:?}",
                             LogicalReplicationMessageKind::try_from(header.message_type)?

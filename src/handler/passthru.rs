@@ -735,6 +735,10 @@ impl PassThruMachine {
                                 return Ok(false);
                             }
                         }
+                        LogicalReplicationMessageKind::Truncate => {
+                            let truncate_message = Truncate::deserialize(&mut raw_message.body)?;
+                            debug!("DETAIL: {:?}", truncate_message,);
+                        }
                         _ => debug!(
                             "Unsupported message: {:?}",
                             LogicalReplicationMessageKind::try_from(header.message_type)?
