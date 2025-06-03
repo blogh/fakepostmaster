@@ -1,26 +1,18 @@
 use proc_macro;
 use proc_macro2;
 use quote::quote;
-use syn::DeriveInput;
+use syn::{DeriveInput, Type};
 
 //----------------------------------------------------------------------------------
 // Derive macro: SerdeLibpqData
 //----------------------------------------------------------------------------------
 
-//#[derive(Debug, deluxe::ParseMetaItem)]
-//enum Transform {
-//    Vec32,
-//    Vec16,
-//    VecNull,
-//    None,
-//}
-//
-//#[derive(Debug, deluxe::ExtractAttributes)]
-//#[deluxe(attributes(serde_libpq))]
-//struct SerdeLibpq {
-//    #[deluxe(default = Transform::None)]
-//    transform: Transform,
-//}
+// #[derive(Debug, deluxe::ExtractAttributes)]
+// #[deluxe(attributes(serde_libpq))]
+// struct SerdeLibpq {
+//     #[deluxe(default = None)]
+//     true_and_consule_if_v: Option<char>,
+// }
 
 #[proc_macro_derive(SerdeLibpqData, attributes(serde_libpq))]
 /// Implements the Serialize and ByteSized traits on a struct.
@@ -43,6 +35,7 @@ fn serde_libpq_data_derive_macro2(
 
         // extract field attribute
         let mut fields_serialize: Vec<proc_macro2::TokenStream> = Vec::new();
+        let mut prepare_deserialize: Vec<proc_macro2::TokenStream> = Vec::new();
         let mut fields_deserialize: Vec<proc_macro2::TokenStream> = Vec::new();
         let mut fields_size: Vec<proc_macro2::TokenStream> = Vec::new();
 
@@ -63,65 +56,54 @@ fn serde_libpq_data_derive_macro2(
             //    if let Some(segment) = type_path.path.segments.iter().next() {
             //        if let Ok(attrs) = deluxe::extract_attributes(field) {
             //            let attrs: SerdeLibpq = attrs;
-            //            match attrs.transform {
-            //                Transform::None => {
-            //                    fields_serialize
-            //                        .push(quote! { self.#field_name.serialize(buffer); });
-            //                    fields_deserialize.push(
-            //                        quote! { #field_name: <#field_type>::deserialize(buffer)?, },
-            //                    );
-            //                    fields_size.push(quote! { self.#field_name.byte_size() });
-            //                }
-            //                Transform::Vec16 => {
-            //                    //FIXME: do something along thoses lines to do a runtimecheck of the type.
-            //                    //assert!(std::any::type_name::<#field_type>().contains("Vec"));
-            //                    if segment.ident == "Vec" {
-            //                        fields_serialize.push(
-            //                            quote! { Vec16::from(self.#field_name).serialize(buffer); },
-            //                        );
-            //                        fields_deserialize.push(quote! { #field_name: Vec::from(<#field_type>::deserialize(buffer)?), });
-            //                        fields_size.push(
-            //                            quote! { Vec16::from(&self.#field_name).byte_size() },
-            //                        );
+            //            match attrs.true_and_consule_if_v {
+            //                Some(inputv) => {
+            //                    if segment.ident == "bool" {
+            //                        prepare_deserialize.push(quote! {
+            //                            let mut value = [0_u8];
+            //                            value.copy_from_slice(&buffer[..1]);
+
+            //                            let #field_name = if value == [#inputv as u8] {
+            //                                _ = u8::deserialize(buffer)?;
+            //                                true
+            //                            } else {
+            //                                false
+            //                            };
+            //                        });
+
+            //                        fields_deserialize.push(quote! {
+            //                            #field_name,
+            //                        });
+
+            //                        fields_serialize.push(quote! {
+            //                            if self.#field_name {
+            //                                (#inputv as u8).serialize(buffer);
+            //                            }
+            //                        });
+
+            //                        fields_size.push(quote! {
+            //                            if self.#field_name {
+            //                                1
+            //                            } else {
+            //                                0
+            //                            }
+            //                        });
+
+            //                        continue;
             //                    } else {
-            //                        panic!("Invalid target for transform=Vec16");
+            //                        panic!("Expected bool with true_if_v_false_otherwise found: {ident}");
             //                    }
             //                }
-            //                Transform::Vec32 => {
-            //                    //FIXME: do something along thoses lines to do a runtimecheck of the type.
-            //                    //assert!(std::any::type_name::<#field_type>().contains("Vec"));
-            //                    if segment.ident == "Vec" {
-            //                        fields_serialize.push(
-            //                            quote! { Vec32::from(self.#field_name).serialize(buffer); },
-            //                        );
-            //                        fields_deserialize.push(quote! { #field_name: Vec::from(<#field_type>::deserialize(buffer)?), });
-            //                        fields_size.push(
-            //                            quote! { Vec32::from(&self.#field_name).byte_size() },
-            //                        );
-            //                    } else {
-            //                        panic!("Invalid target for transform=Vec32");
-            //                    }
-            //                }
-            //                Transform::VecNull => {
-            //                    //FIXME: do something along thoses lines to do a runtimecheck of the type.
-            //                    //assert!(std::any::type_name::<#field_type>().contains("Vec"));
-            //                    if segment.ident == "Vec" {
-            //                        fields_serialize.push(
-            //                            quote! { Vec32::from(self.#field_name).serialize(buffer); },
-            //                        );
-            //                        fields_deserialize.push(quote! { #field_name: Vec::from(<#field_type>::deserialize(buffer)?), });
-            //                        fields_size.push(quote! { self.#field_name.byte_size() });
-            //                    } else {
-            //                        panic!("Invalid target for transform=VecNull");
-            //                    }
-            //                }
+            //                None => {}
             //            }
             //        }
             //    }
             //}
 
             fields_serialize.push(quote! { self.#field_name.serialize(buffer); });
-            fields_deserialize.push(quote! { #field_name: <#field_type>::deserialize(buffer)?, });
+            prepare_deserialize
+                .push(quote! { let #field_name = <#field_type>::deserialize(buffer)?; });
+            fields_deserialize.push(quote! { #field_name, });
             fields_size.push(quote! { self.#field_name.byte_size() });
         }
 
@@ -144,6 +126,8 @@ fn serde_libpq_data_derive_macro2(
                     Self: std::marker::Sized,
                     bytes::Bytes: bytes::Buf
                 {
+                    #(#prepare_deserialize)*
+
                     Ok(Self {
                         #(#fields_deserialize)*
                     })
