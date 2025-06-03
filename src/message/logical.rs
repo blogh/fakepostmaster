@@ -229,7 +229,6 @@ pub struct Insert {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
     pub rel_oid: i32,
-    pub new_tuple: Byte,
     pub new_tuple_data: TupleData,
 }
 
@@ -256,10 +255,7 @@ pub struct Update {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
     pub rel_oid: i32,
-    //pub key_tuple: Byte,
-    pub old_tuple: Byte,
-    pub old_tuple_data: TupleData,
-    pub new_tuple: Byte,
+    pub old_tuple_data: ReplicaIdentity,
     pub new_tuple_data: TupleData,
 }
 
@@ -282,9 +278,7 @@ pub struct Delete {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
     pub rel_oid: i32,
-    //pub key_tuple: Byte,
-    pub old_tuple: Byte,
-    pub old_tuple_data: TupleData,
+    pub old_tuple_data: ReplicaIdentity,
 }
 
 // Truncate
@@ -424,11 +418,60 @@ pub struct StreamAbort {
 //   format byte). n is the above length.
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct TupleData {
-    pub columns: VecWithEncoding<ColumnData, Length16>,
+    pub flag: Byte,
+    pub data: VecWithEncoding<ColumnData, Length16>,
 }
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct ColumnData {
     pub flag: Byte,
     pub column_value: Bytes,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ReplicaIdentity {
+    Old(TupleData),
+    Key(TupleData),
+    None,
+}
+
+impl libpq_serde_types::ByteSized for ReplicaIdentity {
+    fn byte_size(&self) -> i32 {
+        match &self {
+            &ReplicaIdentity::Old(t) => t.byte_size(),
+            &ReplicaIdentity::Key(t) => t.byte_size(),
+            &ReplicaIdentity::None => 0,
+        }
+    }
+}
+
+impl libpq_serde_types::Serialize for ReplicaIdentity {
+    fn serialize(&self, buffer: &mut bytes::BytesMut) {
+        match &self {
+            &ReplicaIdentity::Old(t) => {
+                t.serialize(buffer);
+            }
+            &ReplicaIdentity::Key(t) => {
+                t.serialize(buffer);
+            }
+            &ReplicaIdentity::None => (),
+        }
+    }
+}
+
+impl libpq_serde_types::Deserialize for ReplicaIdentity {
+    fn deserialize(buffer: &mut bytes::Bytes) -> anyhow::Result<Self>
+    where
+        Self: std::marker::Sized,
+        bytes::Bytes: bytes::Buf,
+    {
+        let mut value = [0_u8];
+        value.copy_from_slice(&buffer[..1]);
+
+        match value[0] as char {
+            'O' => Ok(ReplicaIdentity::Old(TupleData::deserialize(buffer)?)),
+            'K' => Ok(ReplicaIdentity::Key(TupleData::deserialize(buffer)?)),
+            _ => Ok(ReplicaIdentity::None),
+        }
+    }
 }
