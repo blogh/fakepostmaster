@@ -294,10 +294,13 @@ pub struct Delete {
 pub struct Truncate {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
-    pub rel_cnt: i32,
-    pub flag: i8,
-    //FIXME: The encoding is wrong here
-    pub relations: VecWithEncoding<i32, Length32>,
+    pub relations: VecWithEncoding<TruncateRelation, Length32>,
+}
+
+#[derive(Debug, PartialEq, SerdeLibpqData)]
+pub struct TruncateRelation {
+    flag: i8,
+    oid: i32,
 }
 
 // Stream Start
