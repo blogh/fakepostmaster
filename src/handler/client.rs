@@ -607,9 +607,10 @@ impl ClientMachine {
                                             .map(|d| d.name.clone())
                                             .collect::<Vec<_>>()
                                             .join(", ");
+
                                         let mut datarow = Vec::new();
                                         for (idx, data) in
-                                            message.new_tuple_data.columns.into_iter().enumerate()
+                                            message.new_tuple_data.data.into_iter().enumerate()
                                         {
                                             //FIXME: column_value is a bad name
                                             datarow.push(decode_from_text(
@@ -617,6 +618,7 @@ impl ClientMachine {
                                                 &relation.columns[idx].pg_type,
                                             )?);
                                         }
+
                                         info!(
                                             "INSERT INTO {}({}) VALUES {:?}",
                                             relation.relation, cols, datarow
@@ -642,19 +644,35 @@ impl ClientMachine {
                                             .join(", ");
 
                                         let mut old_datarow = Vec::new();
-                                        for (idx, data) in
-                                            message.old_tuple_data.columns.into_iter().enumerate()
-                                        {
-                                            //FIXME: column_value is a bad name
-                                            old_datarow.push(decode_from_text(
-                                                &data.column_value,
-                                                &relation.columns[idx].pg_type,
-                                            )?);
+                                        match message.old_tuple_data {
+                                            ReplicaIdentity::Old(tuple) => {
+                                                for (idx, data) in
+                                                    tuple.data.into_iter().enumerate()
+                                                {
+                                                    //FIXME: column_value is a bad name
+                                                    old_datarow.push(decode_from_text(
+                                                        &data.column_value,
+                                                        &relation.columns[idx].pg_type,
+                                                    )?);
+                                                }
+                                            }
+                                            ReplicaIdentity::Key(tuple) => {
+                                                for (idx, data) in
+                                                    tuple.data.into_iter().enumerate()
+                                                {
+                                                    //FIXME: column_value is a bad name
+                                                    old_datarow.push(decode_from_text(
+                                                        &data.column_value,
+                                                        &relation.columns[idx].pg_type,
+                                                    )?);
+                                                }
+                                            }
+                                            _ => (),
                                         }
 
                                         let mut new_datarow = Vec::new();
                                         for (idx, data) in
-                                            message.new_tuple_data.columns.into_iter().enumerate()
+                                            message.new_tuple_data.data.into_iter().enumerate()
                                         {
                                             //FIXME: column_value is a bad name
                                             new_datarow.push(decode_from_text(
@@ -662,6 +680,7 @@ impl ClientMachine {
                                                 &relation.columns[idx].pg_type,
                                             )?);
                                         }
+
                                         info!(
                                             "UPDATE ON {}({}) OLD_VALUES {:?} NEW_VALUES {:?}",
                                             relation.relation, cols, old_datarow, new_datarow
@@ -684,16 +703,34 @@ impl ClientMachine {
                                             .map(|d| d.name.clone())
                                             .collect::<Vec<_>>()
                                             .join(", ");
+
                                         let mut datarow = Vec::new();
-                                        for (idx, data) in
-                                            message.old_tuple_data.columns.into_iter().enumerate()
-                                        {
-                                            //FIXME: column_value is a bad name
-                                            datarow.push(decode_from_text(
-                                                &data.column_value,
-                                                &relation.columns[idx].pg_type,
-                                            )?);
+                                        match message.old_tuple_data {
+                                            ReplicaIdentity::Old(tuple) => {
+                                                for (idx, data) in
+                                                    tuple.data.into_iter().enumerate()
+                                                {
+                                                    //FIXME: column_value is a bad name
+                                                    datarow.push(decode_from_text(
+                                                        &data.column_value,
+                                                        &relation.columns[idx].pg_type,
+                                                    )?);
+                                                }
+                                            }
+                                            ReplicaIdentity::Key(tuple) => {
+                                                for (idx, data) in
+                                                    tuple.data.into_iter().enumerate()
+                                                {
+                                                    //FIXME: column_value is a bad name
+                                                    datarow.push(decode_from_text(
+                                                        &data.column_value,
+                                                        &relation.columns[idx].pg_type,
+                                                    )?);
+                                                }
+                                            }
+                                            _ => (),
                                         }
+
                                         info!(
                                             "DELETE FROM {}({}) VALUES {:?}",
                                             relation.relation, cols, datarow

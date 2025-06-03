@@ -591,7 +591,7 @@ impl PassThruMachine {
                             if self.anonymize {
                                 // modify the message
                                 let new_value = match decode_from_text(
-                                    &insert_message.new_tuple_data.columns[0].column_value,
+                                    &insert_message.new_tuple_data.data[0].column_value,
                                     &PgType::Int8,
                                 ) {
                                     Ok(PgToRustTypes::Int8(value)) => value,
@@ -599,8 +599,9 @@ impl PassThruMachine {
                                 };
 
                                 let new_value = new_value * -10;
-                                insert_message.new_tuple_data.columns[0].column_value =
+                                insert_message.new_tuple_data.data[0].column_value =
                                     Bytes::from(new_value.to_string());
+
                                 debug!("DETAIL: Anonymize {:?}", insert_message,);
 
                                 // create a new one and send it
@@ -619,30 +620,54 @@ impl PassThruMachine {
                             debug!("DETAIL: {:?}", update_message,);
 
                             if self.anonymize {
+                                // get the new value
                                 let new_value = match decode_from_text(
-                                    &update_message.new_tuple_data.columns[0].column_value,
+                                    &update_message.new_tuple_data.data[0].column_value,
                                     &PgType::Int8,
                                 ) {
                                     Ok(PgToRustTypes::Int8(value)) => value,
                                     _ => return Err(anyhow!("Incompatible type")),
                                 };
 
-                                let old_value = match decode_from_text(
-                                    &update_message.old_tuple_data.columns[0].column_value,
-                                    &PgType::Int8,
-                                ) {
-                                    Ok(PgToRustTypes::Int8(value)) => value,
-                                    _ => return Err(anyhow!("Incompatible type")),
-                                };
-
-                                // modify the message
+                                // modify the new value in the message
                                 let new_value = new_value * -10;
-                                update_message.new_tuple_data.columns[0].column_value =
+                                update_message.new_tuple_data.data[0].column_value =
                                     Bytes::from(new_value.to_string());
 
-                                let old_value = old_value * -10;
-                                update_message.old_tuple_data.columns[0].column_value =
-                                    Bytes::from(old_value.to_string());
+                                // get the old value
+                                match update_message.old_tuple_data {
+                                    ReplicaIdentity::Old(ref mut tuple) => {
+                                        let old_value = match decode_from_text(
+                                            &tuple.data[0].column_value,
+                                            &PgType::Int8,
+                                        ) {
+                                            Ok(PgToRustTypes::Int8(value)) => value,
+                                            _ => return Err(anyhow!("Incompatible type")),
+                                        };
+
+                                        let old_value = old_value * -10;
+                                        tuple.data[0].column_value =
+                                            Bytes::from(old_value.to_string());
+
+                                        dbg!("Old {tuple}");
+                                    }
+                                    ReplicaIdentity::Key(ref mut tuple) => {
+                                        let old_value = match decode_from_text(
+                                            &tuple.data[0].column_value,
+                                            &PgType::Int8,
+                                        ) {
+                                            Ok(PgToRustTypes::Int8(value)) => value,
+                                            _ => return Err(anyhow!("Incompatible type")),
+                                        };
+
+                                        let old_value = old_value * -10;
+                                        tuple.data[0].column_value =
+                                            Bytes::from(old_value.to_string());
+
+                                        dbg!("Key {tuple}");
+                                    }
+                                    ReplicaIdentity::None => (),
+                                }
 
                                 debug!("DETAIL: Anonymize {:?}", update_message,);
 
@@ -662,19 +687,42 @@ impl PassThruMachine {
                             debug!("DETAIL: {:?}", delete_message,);
 
                             if self.anonymize {
-                                let old_value = match decode_from_text(
-                                    &delete_message.old_tuple_data.columns[0].column_value,
-                                    &PgType::Int8,
-                                ) {
-                                    Ok(PgToRustTypes::Int8(value)) => value,
-                                    _ => return Err(anyhow!("Incompatible type")),
-                                };
+                                // get the old value
+                                match delete_message.old_tuple_data {
+                                    ReplicaIdentity::Old(ref mut tuple) => {
+                                        let old_value = match decode_from_text(
+                                            &tuple.data[0].column_value,
+                                            &PgType::Int8,
+                                        ) {
+                                            Ok(PgToRustTypes::Int8(value)) => value,
+                                            _ => return Err(anyhow!("Incompatible type")),
+                                        };
 
-                                let old_value = old_value * -10;
-                                delete_message.old_tuple_data.columns[0].column_value =
-                                    Bytes::from(old_value.to_string());
+                                        let old_value = old_value * -10;
+                                        tuple.data[0].column_value =
+                                            Bytes::from(old_value.to_string());
 
-                                debug!("DETAIL: Anonymized {:?}", delete_message,);
+                                        dbg!("Old {tuple}");
+                                    }
+                                    ReplicaIdentity::Key(ref mut tuple) => {
+                                        let old_value = match decode_from_text(
+                                            &tuple.data[0].column_value,
+                                            &PgType::Int8,
+                                        ) {
+                                            Ok(PgToRustTypes::Int8(value)) => value,
+                                            _ => return Err(anyhow!("Incompatible type")),
+                                        };
+
+                                        let old_value = old_value * -10;
+                                        tuple.data[0].column_value =
+                                            Bytes::from(old_value.to_string());
+
+                                        dbg!("Key {tuple}");
+                                    }
+                                    ReplicaIdentity::None => (),
+                                }
+
+                                debug!("DETAIL: Anonymize {:?}", delete_message,);
 
                                 // create a new one and send it
                                 MessageBuilder::new_backend_message()
