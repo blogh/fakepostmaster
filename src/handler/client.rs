@@ -357,7 +357,7 @@ impl ClientMachine {
                 Message::Backend(BackendMessageKind::CommandComplete),
                 Context::SimpleQuery(QState::Data(qdata)),
             ) => {
-                info!("{qdata:#?}");
+                info!("Query data: {qdata:#?}");
                 self.context = Context::SimpleQuery(QState::Done);
             }
 
@@ -542,7 +542,7 @@ impl ClientMachine {
     }
 
     fn get_message(&mut self) -> anyhow::Result<(Message, RawMessage<MessageType>)> {
-        let message = RawMessage::<MessageType>::receive(&mut self.tcp_stream)?;
+        let message = RawMessage::<MessageType>::receive_from_backend(&mut self.tcp_stream)?;
         Ok((
             Message::Backend(BackendMessageKind::try_from(&message.mtype)?),
             message,

@@ -165,7 +165,8 @@ impl PassThruMachine {
         mut fe_stream: TcpStream,
         anonymize: bool,
     ) -> anyhow::Result<Self> {
-        let mut raw_startup_request = RawMessage::<RequestType>::receive(&mut fe_stream)?;
+        let mut raw_startup_request =
+            RawMessage::<RequestType>::receive_from_frontend(&mut fe_stream)?;
         raw_startup_request.send(&mut be_stream);
         let startup_message = StartupMessage::try_from(&mut raw_startup_request)?;
 
@@ -500,14 +501,15 @@ impl PassThruMachine {
     fn get_message(&mut self) -> anyhow::Result<(Message, RawMessage<MessageType>)> {
         match self.read_from {
             ReadFrom::Backend => {
-                let message = RawMessage::<MessageType>::receive(&mut self.be_stream)?;
+                let message = RawMessage::<MessageType>::receive_from_backend(&mut self.be_stream)?;
                 Ok((
                     Message::Backend(BackendMessageKind::try_from(&message.mtype)?),
                     message,
                 ))
             }
             ReadFrom::Frontend => {
-                let message = RawMessage::<MessageType>::receive(&mut self.fe_stream)?;
+                let message =
+                    RawMessage::<MessageType>::receive_from_frontend(&mut self.fe_stream)?;
                 Ok((
                     Message::Frontend(FrontendMessageKind::try_from(&message.mtype)?),
                     message,
@@ -516,7 +518,7 @@ impl PassThruMachine {
             ReadFrom::PreferBackend => {
                 self.fe_stream
                     .set_read_timeout(Some(Duration::from_millis(200)))?;
-                let message = RawMessage::<MessageType>::receive(&mut self.fe_stream);
+                let message = RawMessage::<MessageType>::receive_from_frontend(&mut self.fe_stream);
                 self.fe_stream.set_read_timeout(None)?;
 
                 match message {
@@ -530,8 +532,9 @@ impl PassThruMachine {
                     Err(e) => match e.downcast_ref::<std::io::Error>() {
                         Some(io_error) => match io_error.kind() {
                             ErrorKind::TimedOut | ErrorKind::WouldBlock => {
-                                let message =
-                                    RawMessage::<MessageType>::receive(&mut self.be_stream)?;
+                                let message = RawMessage::<MessageType>::receive_from_backend(
+                                    &mut self.be_stream,
+                                )?;
                                 Ok((
                                     Message::Backend(BackendMessageKind::try_from(&message.mtype)?),
                                     message,
