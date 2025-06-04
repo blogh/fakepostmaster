@@ -8,6 +8,7 @@ use super::raw_message::{
     MessageBody, MessageHeader, MessageType, RawMessage, RequestHeader, RequestType,
 };
 
+use super::MsgOrigin;
 use super::fbprotocol::*;
 use super::logical::*;
 use super::streaming::*;
@@ -159,6 +160,7 @@ impl MessageBuilder<Frontend, StartupMessage, NotStreaming, NotLogical> {
         .serialize(&mut buffer_header);
 
         RawMessage {
+            from: MsgOrigin::Frontend,
             mtype: RequestType::StartupMessage,
             header: buffer_header.into(),
             body: buffer_body.into(),
@@ -169,14 +171,14 @@ impl MessageBuilder<Frontend, StartupMessage, NotStreaming, NotLogical> {
 // --- PasswordMessage
 impl MessageBuilder<Frontend, PasswordMessage, NotStreaming, NotLogical> {
     pub fn into_raw_message(self) -> RawMessage<MessageType> {
-        self.build_libpq_message(None)
+        self.build_libpq_message(MsgOrigin::Frontend, None)
     }
 }
 
 // --- Query
 impl MessageBuilder<Frontend, Query, NotStreaming, NotLogical> {
     pub fn into_raw_message(self) -> RawMessage<MessageType> {
-        self.build_libpq_message(None)
+        self.build_libpq_message(MsgOrigin::Frontend, None)
     }
 }
 
@@ -197,7 +199,10 @@ where
 // --- AuthenticationMd5
 impl MessageBuilder<Backend, AuthenticationMD5Password, NotStreaming, NotLogical> {
     pub fn into_raw_message(self) -> RawMessage<MessageType> {
-        self.build_libpq_message(Some(i32::from(&AuthenticationMessageKind::MD5Password)))
+        self.build_libpq_message(
+            MsgOrigin::Backend,
+            Some(i32::from(&AuthenticationMessageKind::MD5Password)),
+        )
     }
 }
 
@@ -245,14 +250,14 @@ impl MessageBuilder<Frontend, CopyData, NotStreaming, NotLogical> {
 // --- PrimaryKeepAlive
 impl MessageBuilder<Backend, CopyData, PrimaryKeepAliveMessage, NotLogical> {
     pub fn into_raw_message(self) -> RawMessage<MessageType> {
-        self.build_streaming_message()
+        self.build_streaming_message(MsgOrigin::Backend)
     }
 }
 
 // --- StandbyStatusUpdate
 impl MessageBuilder<Frontend, CopyData, StandbyStatusUpdate, NotLogical> {
     pub fn into_raw_message(self) -> RawMessage<MessageType> {
-        self.build_streaming_message()
+        self.build_streaming_message(MsgOrigin::Frontend)
     }
 }
 
@@ -319,42 +324,42 @@ impl MessageBuilder<Backend, CopyData, XLogData, NotLogical> {
 // --- Insert
 impl MessageBuilder<Backend, CopyData, XLogData, Insert> {
     pub fn into_raw_message(self) -> RawMessage<MessageType> {
-        self.build_logical_message()
+        self.build_logical_message(MsgOrigin::Backend)
     }
 }
 
 // --- Update
 impl MessageBuilder<Backend, CopyData, XLogData, Update> {
     pub fn into_raw_message(self) -> RawMessage<MessageType> {
-        self.build_logical_message()
+        self.build_logical_message(MsgOrigin::Backend)
     }
 }
 
 // --- Delete
 impl MessageBuilder<Backend, CopyData, XLogData, Delete> {
     pub fn into_raw_message(self) -> RawMessage<MessageType> {
-        self.build_logical_message()
+        self.build_logical_message(MsgOrigin::Backend)
     }
 }
 
 // --- Truncate
 impl MessageBuilder<Backend, CopyData, XLogData, Truncate> {
     pub fn into_raw_message(self) -> RawMessage<MessageType> {
-        self.build_logical_message()
+        self.build_logical_message(MsgOrigin::Backend)
     }
 }
 
 // --- Begin
 impl MessageBuilder<Backend, CopyData, XLogData, Begin> {
     pub fn into_raw_message(self) -> RawMessage<MessageType> {
-        self.build_logical_message()
+        self.build_logical_message(MsgOrigin::Backend)
     }
 }
 
 // --- Commit
 impl MessageBuilder<Backend, CopyData, XLogData, Commit> {
     pub fn into_raw_message(self) -> RawMessage<MessageType> {
-        self.build_logical_message()
+        self.build_logical_message(MsgOrigin::Backend)
     }
 }
 
@@ -369,7 +374,7 @@ where
     L: Serialize + MessageBody,
 {
     //FIXME: the type constraint are a little lax maybe add a logical and streaming trait
-    fn build_logical_message(self) -> RawMessage<MessageType> {
+    fn build_logical_message(self, from: MsgOrigin) -> RawMessage<MessageType> {
         // Reconstruct the streaming message
         let mut buffer_body = BytesMut::new();
         StreamingHeader {
@@ -399,6 +404,7 @@ where
         };
 
         RawMessage {
+            from,
             mtype,
             header: buffer_header.into(),
             body: buffer_body.into(),
@@ -412,7 +418,7 @@ where
     S: Serialize + MessageBody,
 {
     //FIXME: the type constraint are a little lax maybe add a streaming trait
-    fn build_streaming_message(self) -> RawMessage<MessageType> {
+    fn build_streaming_message(self, from: MsgOrigin) -> RawMessage<MessageType> {
         let mut buffer_body = BytesMut::new();
 
         // Reconstruct the streaming message
@@ -436,6 +442,7 @@ where
         };
 
         RawMessage {
+            from,
             mtype,
             header: buffer_header.into(),
             body: buffer_body.into(),
@@ -448,7 +455,7 @@ where
     M: Serialize + MessageBody,
 {
     //FIXME: the type constraint are a little lax maybe add a streaming trait
-    fn build_libpq_message(self, auth: Option<i32>) -> RawMessage<MessageType> {
+    fn build_libpq_message(self, from: MsgOrigin, auth: Option<i32>) -> RawMessage<MessageType> {
         let mut buffer_body = BytesMut::new();
 
         // Reconstruct CopyData message
@@ -467,6 +474,7 @@ where
         };
 
         RawMessage {
+            from,
             mtype,
             header: buffer_header.into(),
             body: buffer_body.into(),

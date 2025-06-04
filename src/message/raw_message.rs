@@ -14,8 +14,15 @@ use super::fbprotocol::{BackendMessageKind, FrontendMessageKind};
 //*----------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
+pub enum MsgOrigin {
+    Frontend,
+    Backend,
+}
+
+#[derive(Clone)]
 pub struct RawMessage<T> {
     //FIXME: remove public?
+    pub from: MsgOrigin,
     pub mtype: T,
     pub header: Bytes,
     pub body: Bytes,
@@ -25,37 +32,53 @@ impl<T> RawMessage<T> {
     pub fn send<S>(&self, stream: &mut S) -> anyhow::Result<()>
     where
         S: Write,
-        T: std::fmt::Debug,
+        Self: std::fmt::Debug + std::fmt::Display,
     {
         stream.write(&self.header)?;
         stream.write(&self.body)?;
-
-        //debug!(
-        //    "Detailed dump:\nheader: {:}\nbody\n{:}",
-        //    format_bytes(&self.header),
-        //    format_bytes(&self.body)
-        //);
+        debug!("{}", self);
+        debug!("{:?}", self);
 
         Ok(())
     }
 }
 
-fn format_bytes(bytes: &[u8]) -> String {
-    use std::fmt::Write;
+impl<S> std::fmt::Debug for RawMessage<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Detailed dump:\nheader:\n{:}\nbody:\n{:}",
+            format_bytes(&self.header),
+            format_bytes(&self.body),
+        )
+    }
+}
 
+//FIXME: this should probably moved somewhere else
+fn format_bytes(bytes: &[u8]) -> String {
     let mut formatted = String::new();
+    let mut formatted_hex = String::new();
+    let mut formatted_txt = String::new();
 
     for (i, &byte) in bytes.iter().enumerate() {
         // Format each byte as a two-character hexadecimal string
-        write!(formatted, "{:02x}", byte).unwrap();
+        formatted_hex += &format!("{:02x}", byte);
+        formatted_txt.push(match &byte.is_ascii_graphic() {
+            true => byte as char,
+            false => '.',
+        });
 
         // Add spaces at specific intervals
         if (i + 1) % 16 == 0 {
-            formatted.push('\n');
+            formatted += &format!("{:40}  {:}\n", &formatted_hex, &formatted_txt);
+
+            formatted_hex = String::new();
+            formatted_txt = String::new();
         } else if i > 0 && i % 2 == 1 {
-            formatted.push(' ');
+            formatted_hex.push(' ');
         }
     }
+    formatted += &format!("{:40}  {:}", &formatted_hex, &formatted_txt);
 
     formatted
 }
@@ -100,10 +123,10 @@ impl From<&RequestType> for i32 {
     }
 }
 
-impl TryFrom<i32> for RequestType {
+impl TryFrom<&i32> for RequestType {
     type Error = anyhow::Error;
 
-    fn try_from(request_code: i32) -> anyhow::Result<RequestType> {
+    fn try_from(request_code: &i32) -> anyhow::Result<RequestType> {
         match request_code {
             196608 => Ok(Self::StartupMessage),
             80877102 => Ok(Self::CancelRequest),
@@ -120,7 +143,7 @@ pub struct RequestHeader {
     pub length: i32,
 }
 impl RawMessage<RequestType> {
-    pub fn receive<S>(stream: &mut S) -> anyhow::Result<Self>
+    pub fn receive_from_frontend<S>(stream: &mut S) -> anyhow::Result<Self>
     where
         S: Read,
     {
@@ -135,13 +158,20 @@ impl RawMessage<RequestType> {
         let mut mtype = [0_u8; 4];
         mtype.copy_from_slice(&buffer_body[0..4]);
         let mtype = i32::from_be_bytes(mtype);
-        let mtype = RequestType::try_from(mtype)?;
+        let mtype = RequestType::try_from(&mtype)?;
 
         Ok(Self {
+            from: MsgOrigin::Frontend,
             mtype,
             header: buffer_header.into(),
             body: buffer_body.into(),
         })
+    }
+}
+
+impl std::fmt::Display for RawMessage<RequestType> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Frontend message: {:?}", &self.mtype)
     }
 }
 
@@ -383,7 +413,21 @@ impl TryFrom<&MessageType> for FrontendMessageKind {
 }
 
 impl RawMessage<MessageType> {
-    pub fn receive<S>(stream: &mut S) -> anyhow::Result<Self>
+    pub fn receive_from_backend<S>(stream: &mut S) -> anyhow::Result<Self>
+    where
+        S: Read,
+    {
+        RawMessage::<MessageType>::receive(stream, MsgOrigin::Backend)
+    }
+
+    pub fn receive_from_frontend<S>(stream: &mut S) -> anyhow::Result<Self>
+    where
+        S: Read,
+    {
+        RawMessage::<MessageType>::receive(stream, MsgOrigin::Frontend)
+    }
+
+    pub fn receive<S>(stream: &mut S, from: MsgOrigin) -> anyhow::Result<Self>
     where
         S: Read,
     {
@@ -411,16 +455,34 @@ impl RawMessage<MessageType> {
             auth: auth_msg_type,
         };
 
-        //debug!(
-        //    "Detailed dump:\nheader: {:}\nbody\n{:}",
-        //    format_bytes(&buffer_header),
-        //    format_bytes(&buffer_body)
-        //);
-
-        Ok(Self {
+        let message = Self {
+            from,
             mtype,
             header: buffer_header.into(),
             body: buffer_body.into(),
-        })
+        };
+        debug!("{}", message);
+        debug!("{:?}", message);
+
+        Ok(message)
+    }
+}
+
+impl std::fmt::Display for RawMessage<MessageType> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:}",
+            match self.from {
+                MsgOrigin::Frontend => match FrontendMessageKind::try_from(&self.mtype) {
+                    Ok(v) => format!("Frontend message: {v:?}"),
+                    Err(e) => e.to_string(),
+                },
+                MsgOrigin::Backend => match BackendMessageKind::try_from(&self.mtype) {
+                    Ok(v) => format!("Backend message: {v:?}"),
+                    Err(e) => e.to_string(),
+                },
+            }
+        )
     }
 }
