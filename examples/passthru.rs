@@ -6,6 +6,8 @@ use tracing_subscriber;
 
 use fakepostmaster::handler::passthru::*;
 
+// Example of a passthru application.
+
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {

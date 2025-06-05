@@ -9,6 +9,9 @@ use libpq_serde_types::Deserialize;
 
 use super::fbprotocol::{BackendMessageKind, FrontendMessageKind};
 
+// Raw messages are the messages in binary format that we receive or encode
+// and send.
+
 //*----------------------------------------------------------------------------
 // RawMessage
 //*----------------------------------------------------------------------------

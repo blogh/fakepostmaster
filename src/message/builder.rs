@@ -3,7 +3,6 @@ use std::marker::PhantomData;
 
 use libpq_serde_types::{Deserialize, Serialize};
 
-//FIXME: mode to mod.rs
 use super::raw_message::{
     MessageBody, MessageHeader, MessageType, RawMessage, RequestHeader, RequestType,
 };
@@ -12,6 +11,11 @@ use super::MsgOrigin;
 use super::fbprotocol::*;
 use super::logical::*;
 use super::streaming::*;
+
+// The MessageBuilder uses a State Builder pattern to create messages. Once the message
+// is ready we can turn it into a RawMessage and send it.
+
+//TODO: Only a few messages a implemented right now
 
 //*----------------------------------------------------------------------------
 // MessageBuilder: structs

@@ -6,6 +6,8 @@ use tracing_subscriber;
 
 use fakepostmaster::handler::client::*;
 
+// Example of a client application.
+
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {

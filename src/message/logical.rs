@@ -8,6 +8,12 @@ use libpq_serde_types::{
     libpq_types::{Byte, Length16, Length32, VecWithEncoding},
 };
 
+// This file contains all the messages from the logical replication. The are packed inside a
+// CopyData message usually in the CopyBoth context (an briefly on CopyIn CopyOut when we stop
+// the replication) and then in the a XLogData Message.
+//
+// The list of messages can be found here and has been copied below (v17):
+// * https://www.postgresql.org/docs/17/protocol-logical-replication.html
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct LogicalHeader {
     pub message_type: i8,

@@ -12,7 +12,7 @@ use libpq_serde_types::{
 
 use super::raw_message::{MessageType, RawMessage, RequestBody, RequestType};
 
-// This file contains all the messages from the frontend backend protocol.
+// This file contains all the messages from the frontend/backend protocol.
 //
 // The list of messages can be found here and has been copied below (v17):
 // * https://www.postgresql.org/docs/17/protocol-flow.html

@@ -3,6 +3,12 @@ use bytes::Bytes;
 use libpq_serde_macros::{MessageBody, SerdeLibpqData};
 use libpq_serde_types::{Deserialize, libpq_types::Byte};
 
+// This file contains all the messages from the strealing replication. The are packed inside a
+// CopyData message usually in the CopyBoth context (an briefly on CopyIn CopyOut when we stop
+// the replication.)
+//
+// The list of messages can be found here and has been copied below (v17):
+// * https://www.postgresql.org/docs/17/protocol-replication.html
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct StreamingHeader {
     pub message_type: i8,
