@@ -56,6 +56,8 @@ pub enum PgToRustTypes {
     Int4(i16),
     Text(String),
     Oid(u32),
+    Null,
+    UnchangedToastedData,
 }
 
 pub fn decode_from_text(data: &Bytes, pg_type: &PgType) -> anyhow::Result<PgToRustTypes> {
