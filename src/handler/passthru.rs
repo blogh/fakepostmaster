@@ -8,8 +8,7 @@ use tracing::*;
 
 use libpq_serde_types::Deserialize;
 
-//FIXME: use super::
-use crate::handler::{PgToRustTypes, PgType, decode_from_text};
+use super::{PgToRustTypes, PgType, decode_from_text};
 use crate::message::logical::*;
 use crate::message::streaming::*;
 use crate::message::*;
@@ -135,6 +134,12 @@ impl TryFrom<RColumnDescription> for CBColDesc {
         })
     }
 }
+
+#[derive(Debug)]
+pub enum Anonymize {
+    i32(fn(i32) -> i32),
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum ReadFrom {
     Frontend,       // Read from frontend wait if necessary
@@ -154,6 +159,7 @@ pub struct PassThruMachine {
     user: Option<String>,
     database: Option<String>,
     anonymize: bool,
+    anonymize_what: HashMap<(i32, i32), Anonymize>,
     application_name: Option<String>,
     client_parameters: HashMap<String, String>,
     server_parameters: HashMap<String, String>,
@@ -167,10 +173,14 @@ impl PassThruMachine {
     ) -> anyhow::Result<Self> {
         let mut raw_startup_request =
             RawMessage::<RequestType>::receive_from_frontend(&mut fe_stream)?;
-        raw_startup_request.send(&mut be_stream);
+        raw_startup_request.send(&mut be_stream)?;
         let startup_message = StartupMessage::try_from(&mut raw_startup_request)?;
 
-        //FIXME:replace the expects
+        let mut anonymize_what = HashMap::<(i32, i32), Anonymize>::new();
+        anonymize_what.insert((16453, 0), Anonymize::i32(|c: i32| c * -10)); // t.i
+        anonymize_what.insert((16468, 1), Anonymize::i32(|c: i32| c * -100)); // tt.j
+        anonymize_what.insert((16468, 2), Anonymize::i32(|c: i32| c * -10)); // tt.k
+
         Ok(Self {
             last_message_kind: None,
             context: Context::Authentication,
@@ -181,6 +191,7 @@ impl PassThruMachine {
             database: None,
             application_name: None,
             anonymize,
+            anonymize_what,
             client_parameters: HashMap::<String, String>::try_from(&startup_message)?,
             server_parameters: HashMap::<String, String>::new(),
         })
@@ -593,29 +604,22 @@ impl PassThruMachine {
 
                             if self.anonymize {
                                 // modify the message
-                                let new_value = match decode_from_text(
-                                    &insert_message.new_tuple_data.data[0].column_value,
-                                    &PgType::Int8,
-                                ) {
-                                    Ok(PgToRustTypes::Int8(value)) => value,
-                                    _ => return Err(anyhow!("Incompatible type")),
-                                };
+                                if self.anonymize(
+                                    insert_message.rel_oid,
+                                    &mut insert_message.new_tuple_data,
+                                )? {
+                                    debug!("DETAIL: Anonymize {:?}", insert_message,);
 
-                                let new_value = new_value * -10;
-                                insert_message.new_tuple_data.data[0].column_value =
-                                    Bytes::from(new_value.to_string());
+                                    // create a new message and send it
+                                    MessageBuilder::new_backend_message()
+                                        .copy_data()
+                                        .xlog_data(xlog_data_body)
+                                        .insert(insert_message)
+                                        .into_raw_message()
+                                        .send(&mut self.fe_stream)?;
 
-                                debug!("DETAIL: Anonymize {:?}", insert_message,);
-
-                                // create a new one and send it
-                                MessageBuilder::new_backend_message()
-                                    .copy_data()
-                                    .xlog_data(xlog_data_body)
-                                    .insert(insert_message)
-                                    .into_raw_message()
-                                    .send(&mut self.fe_stream)?;
-
-                                return Ok(false);
+                                    return Ok(false);
+                                }
                             }
                         }
                         LogicalReplicationMessageKind::Update => {
@@ -623,66 +627,40 @@ impl PassThruMachine {
                             debug!("DETAIL: {:?}", update_message,);
 
                             if self.anonymize {
-                                // get the new value
-                                let new_value = match decode_from_text(
-                                    &update_message.new_tuple_data.data[0].column_value,
-                                    &PgType::Int8,
-                                ) {
-                                    Ok(PgToRustTypes::Int8(value)) => value,
-                                    _ => return Err(anyhow!("Incompatible type")),
+                                // modify the new value in the message
+                                let anon_new = self.anonymize(
+                                    update_message.rel_oid,
+                                    &mut update_message.new_tuple_data,
+                                )?;
+
+                                // modify the replica ident
+                                let anon_replica_ident = match update_message.old_tuple_data {
+                                    // All fields a re populated
+                                    ReplicaIdentity::Old(ref mut tuple) => {
+                                        self.anonymize(update_message.rel_oid, tuple)?
+                                    }
+                                    // In a Key TupleData non pk items are null
+                                    ReplicaIdentity::Key(ref mut tuple) => {
+                                        self.anonymize(update_message.rel_oid, tuple)?
+                                    }
+                                    // The updated data is not in the replica identity, we don't need
+                                    // additionnal tuple data to do the update
+                                    ReplicaIdentity::None => false,
                                 };
 
-                                // modify the new value in the message
-                                let new_value = new_value * -10;
-                                update_message.new_tuple_data.data[0].column_value =
-                                    Bytes::from(new_value.to_string());
+                                if anon_new | anon_replica_ident {
+                                    debug!("DETAIL: Anonymize {:?}", update_message,);
 
-                                // get the old value
-                                match update_message.old_tuple_data {
-                                    ReplicaIdentity::Old(ref mut tuple) => {
-                                        let old_value = match decode_from_text(
-                                            &tuple.data[0].column_value,
-                                            &PgType::Int8,
-                                        ) {
-                                            Ok(PgToRustTypes::Int8(value)) => value,
-                                            _ => return Err(anyhow!("Incompatible type")),
-                                        };
+                                    // create a new message and send it
+                                    MessageBuilder::new_backend_message()
+                                        .copy_data()
+                                        .xlog_data(xlog_data_body)
+                                        .update(update_message)
+                                        .into_raw_message()
+                                        .send(&mut self.fe_stream)?;
 
-                                        let old_value = old_value * -10;
-                                        tuple.data[0].column_value =
-                                            Bytes::from(old_value.to_string());
-
-                                        dbg!("Old {tuple}");
-                                    }
-                                    ReplicaIdentity::Key(ref mut tuple) => {
-                                        let old_value = match decode_from_text(
-                                            &tuple.data[0].column_value,
-                                            &PgType::Int8,
-                                        ) {
-                                            Ok(PgToRustTypes::Int8(value)) => value,
-                                            _ => return Err(anyhow!("Incompatible type")),
-                                        };
-
-                                        let old_value = old_value * -10;
-                                        tuple.data[0].column_value =
-                                            Bytes::from(old_value.to_string());
-
-                                        dbg!("Key {tuple}");
-                                    }
-                                    ReplicaIdentity::None => (),
+                                    return Ok(false);
                                 }
-
-                                debug!("DETAIL: Anonymize {:?}", update_message,);
-
-                                // create a new one and send it
-                                MessageBuilder::new_backend_message()
-                                    .copy_data()
-                                    .xlog_data(xlog_data_body)
-                                    .update(update_message)
-                                    .into_raw_message()
-                                    .send(&mut self.fe_stream)?;
-
-                                return Ok(false);
                             }
                         }
                         LogicalReplicationMessageKind::Delete => {
@@ -691,51 +669,29 @@ impl PassThruMachine {
 
                             if self.anonymize {
                                 // get the old value
-                                match delete_message.old_tuple_data {
-                                    ReplicaIdentity::Old(ref mut tuple) => {
-                                        let old_value = match decode_from_text(
-                                            &tuple.data[0].column_value,
-                                            &PgType::Int8,
-                                        ) {
-                                            Ok(PgToRustTypes::Int8(value)) => value,
-                                            _ => return Err(anyhow!("Incompatible type")),
-                                        };
+                                let tuple_data = match delete_message.old_tuple_data {
+                                    // All fields are populated
+                                    ReplicaIdentity::Old(ref mut tuple) => tuple,
+                                    // In a Key TupleData non pk items are null
+                                    ReplicaIdentity::Key(ref mut tuple) => tuple,
+                                    ReplicaIdentity::None => unreachable!(
+                                        "A delete needs either an Old or Key TupleData to know what to delete"
+                                    ),
+                                };
 
-                                        let old_value = old_value * -10;
-                                        tuple.data[0].column_value =
-                                            Bytes::from(old_value.to_string());
+                                if self.anonymize(delete_message.rel_oid, tuple_data)? {
+                                    debug!("DETAIL: Anonymize {:?}", delete_message,);
 
-                                        dbg!("Old {tuple}");
-                                    }
-                                    ReplicaIdentity::Key(ref mut tuple) => {
-                                        let old_value = match decode_from_text(
-                                            &tuple.data[0].column_value,
-                                            &PgType::Int8,
-                                        ) {
-                                            Ok(PgToRustTypes::Int8(value)) => value,
-                                            _ => return Err(anyhow!("Incompatible type")),
-                                        };
+                                    // create a new one and send it
+                                    MessageBuilder::new_backend_message()
+                                        .copy_data()
+                                        .xlog_data(xlog_data_body)
+                                        .delete(delete_message)
+                                        .into_raw_message()
+                                        .send(&mut self.fe_stream)?;
 
-                                        let old_value = old_value * -10;
-                                        tuple.data[0].column_value =
-                                            Bytes::from(old_value.to_string());
-
-                                        dbg!("Key {tuple}");
-                                    }
-                                    ReplicaIdentity::None => (),
+                                    return Ok(false);
                                 }
-
-                                debug!("DETAIL: Anonymize {:?}", delete_message,);
-
-                                // create a new one and send it
-                                MessageBuilder::new_backend_message()
-                                    .copy_data()
-                                    .xlog_data(xlog_data_body)
-                                    .delete(delete_message)
-                                    .into_raw_message()
-                                    .send(&mut self.fe_stream)?;
-
-                                return Ok(false);
                             }
                         }
                         LogicalReplicationMessageKind::Truncate => {
@@ -771,6 +727,45 @@ impl PassThruMachine {
         }
 
         Ok(needs_feedback)
+    }
+
+    // Anonymize a tuple data if the tuple (relation, column position) exists in the
+    // self.anonymize_what hashmap. If we anonymize something we return Ok(true)
+    fn anonymize(&self, relation: i32, tuple_data: &mut TupleData) -> anyhow::Result<bool> {
+        let mut was_anonymized = false;
+
+        for (idx, col) in tuple_data.data.iter_mut().enumerate() {
+            match col.flag as char {
+                // Unchanged toast or null value
+                'u' | 'n' => (),
+                // binary format
+                'b' => unimplemented!("Binary format encoding is not supported"),
+                // text format
+                't' => match self.anonymize_what.get(&(relation, idx as i32)) {
+                    Some(Anonymize::i32(function)) => {
+                        let old_value = match decode_from_text(
+                            &col.column_value
+                                .as_ref()
+                                .expect("There must be a value since the flag is t"),
+                            &PgType::Int8,
+                        ) {
+                            Ok(PgToRustTypes::Int8(value)) => value,
+                            _ => return Err(anyhow!("Incompatible type")),
+                        };
+
+                        col.column_value = Some(Bytes::from((function)(old_value).to_string()));
+                        was_anonymized = true;
+                    }
+                    None => (),
+                },
+                _ => unreachable!(
+                    "TupleData only supports the n, u, t, b flags got: {}",
+                    col.flag as char
+                ),
+            }
+        }
+
+        Ok(was_anonymized)
     }
 }
 
