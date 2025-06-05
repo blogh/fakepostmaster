@@ -294,7 +294,7 @@ pub struct Delete {
 pub struct Truncate {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
-    pub relations: VecWithEncoding<TruncateRelation, Length32>,
+    pub relations: VecWithEncoding<i32, Length32>,
 }
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
@@ -425,10 +425,52 @@ pub struct TupleData {
     pub data: VecWithEncoding<ColumnData, Length16>,
 }
 
-#[derive(Debug, PartialEq, SerdeLibpqData)]
+#[derive(Debug, PartialEq)]
 pub struct ColumnData {
     pub flag: Byte,
-    pub column_value: Bytes,
+    pub column_value: Option<Bytes>,
+}
+
+// We have to implement this here because there is a special case where
+// column_value is None where flag equals 'n' or 'u'
+impl libpq_serde_types::ByteSized for ColumnData {
+    fn byte_size(&self) -> i32 {
+        match self.flag as char {
+            // Null or unchange Toast
+            'n' | 'u' => 1,
+            // Text or binary format
+            't' | 'b' => 1 + self.column_value.byte_size(),
+            _ => unreachable!("Invalid value for ColumndData flag: {}", self.flag as char),
+        }
+    }
+}
+
+impl libpq_serde_types::Serialize for ColumnData {
+    fn serialize(&self, buffer: &mut bytes::BytesMut) {
+        self.flag.serialize(buffer);
+        match self.flag as char {
+            'n' | 'u' => (),
+            't' | 'b' => self.column_value.serialize(buffer),
+            _ => unreachable!("Invalid value for ColumndData flag: {}", self.flag as char),
+        }
+    }
+}
+
+impl libpq_serde_types::Deserialize for ColumnData {
+    fn deserialize(buffer: &mut bytes::Bytes) -> anyhow::Result<Self>
+    where
+        Self: std::marker::Sized,
+        bytes::Bytes: bytes::Buf,
+    {
+        let flag = u8::deserialize(buffer)?;
+        let column_value = match flag as char {
+            'n' | 'u' => None,
+            't' | 'b' => Some(Bytes::deserialize(buffer)?),
+            _ => unreachable!("Invalid value for ColumndData flag: {}", flag as char),
+        };
+
+        Ok(Self { flag, column_value })
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -438,6 +480,8 @@ pub enum ReplicaIdentity {
     None,
 }
 
+// We have to implement this here because we have a tuple
+// data if there is O or N flag and none otherwise
 impl libpq_serde_types::ByteSized for ReplicaIdentity {
     fn byte_size(&self) -> i32 {
         match &self {
