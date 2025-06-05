@@ -12,6 +12,12 @@ use crate::message::logical::*;
 use crate::message::streaming::*;
 use crate::message::*;
 
+// The client handler has to connect to the database and answer the request from
+// the backend. It could be used as a base for a driver or a client application.
+
+//--------------------------------------------------------------------------------
+// General message stuff
+//--------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub enum Message {
     Frontend(FrontendMessageKind),
@@ -30,6 +36,9 @@ pub enum Context {
     CopyBoth(CBState),
 }
 
+//--------------------------------------------------------------------------------
+// Simple Query context data
+//--------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub enum QState {
     Data(QData),
@@ -69,18 +78,27 @@ impl TryFrom<QColumnDescription> for QColDesc {
     }
 }
 
+//--------------------------------------------------------------------------------
+// CopyIn context data
+//--------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub enum CIState {
     Data,
     Done,
 }
 
+//--------------------------------------------------------------------------------
+// CopyOut context data: Used by COPY OUT durectly or for logical repl init
+//--------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub enum COState {
     Data,
     Done,
 }
 
+//--------------------------------------------------------------------------------
+// CopyBoth context data: Used for streaming replicaiton
+//--------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub enum CBState {
     Data(CBData),
@@ -166,6 +184,9 @@ impl TryFrom<RColumnDescription> for CBColDesc {
     }
 }
 
+//--------------------------------------------------------------------------------
+// The Client "state machine"
+//--------------------------------------------------------------------------------
 #[derive(Debug)]
 pub struct ClientMachine {
     last_message_kind: Option<Message>,
@@ -181,6 +202,7 @@ pub struct ClientMachine {
 }
 
 impl ClientMachine {
+    /// Create a startup message and send it to the backend
     pub fn connect(
         mut tcp_stream: TcpStream,
         user: &str,
@@ -229,6 +251,7 @@ impl ClientMachine {
         })
     }
 
+    /// process one message
     pub fn next(&mut self) -> anyhow::Result<Context> {
         let (current_message_kind, mut raw_message) = self.get_message()?;
 
@@ -237,6 +260,8 @@ impl ClientMachine {
             &current_message_kind,
             &mut self.context,
         ) {
+            //--- Authentication -------------------------------------------------
+
             // The next message should be PasswordMessage .. so we send it
             (
                 None,
@@ -268,6 +293,8 @@ impl ClientMachine {
                 self.server_parameters
                     .insert("secret_key".to_string(), message.secret_key.to_string());
             }
+
+            //--- Simple Query -------------------------------------------------
 
             // ReadyForQuery could be received from the authentication context or the query
             // context, After that we wait for the frontend to send us a Query message.
@@ -361,6 +388,8 @@ impl ClientMachine {
                 self.context = Context::SimpleQuery(QState::Done);
             }
 
+            //--- CopyOut --------------------------------------------------------
+
             // CopyOutResponse is sent after receiving a COPY TO STDOUT. The next message
             // should be a CopyData also sent by the Backend
             #[cfg_attr(rustfmt, rustfmt_skip)]
@@ -396,6 +425,8 @@ impl ClientMachine {
                 self.context = Context::CopyOut(COState::Done);
             }
 
+            //--- CopyIn --------------------------------------------------------
+
             // CopyInResponse is sent after receiving a COPY FROM STDIN. The next message
             // should be a CopyData sent by the Frontend
             #[cfg_attr(rustfmt, rustfmt_skip)]
@@ -430,6 +461,8 @@ impl ClientMachine {
             ) => {
                 self.context = Context::CopyIn(CIState::Done);
             }
+
+            //--- CopyBoth -------------------------------------------------------
 
             // CopyBothResponse is sent after receiving a request to stream data with
             // the logical replication. The next message should be a CopyData also sent
@@ -487,6 +520,8 @@ impl ClientMachine {
                 self.context = Context::CopyBoth(CBState::Done);
             }
 
+            //--- Async messages -------------------------------------------------
+
             // Async message can happend anytime, they dont change the context
             // except if they are ment to interrupt the flow of message.
 
@@ -524,6 +559,8 @@ impl ClientMachine {
                 self.context = Context::Disconnected;
             }
 
+            //--- Other messages and errors --------------------------------------
+
             // All acceptable messages
             (Some(_), _, _) => (),
 
@@ -541,6 +578,7 @@ impl ClientMachine {
         Ok(self.context.clone())
     }
 
+    /// Read from the frontend
     fn get_message(&mut self) -> anyhow::Result<(Message, RawMessage<MessageType>)> {
         let message = RawMessage::<MessageType>::receive_from_backend(&mut self.tcp_stream)?;
         Ok((
@@ -549,6 +587,7 @@ impl ClientMachine {
         ))
     }
 
+    /// Process streaming messages (specially the logical ones)
     fn streaming_replication(
         &mut self,
         raw_message: &mut RawMessage<MessageType>,
@@ -562,6 +601,7 @@ impl ClientMachine {
             );
 
             match StreamingReplicationMessageKind::try_from(xlog_data_header.message_type)? {
+                //--- XLogData contains the replication data ---------------------
                 StreamingReplicationMessageKind::XLogData => {
                     let xlog_data_body = XLogData::deserialize(&mut raw_message.body)?;
                     debug!("DETAIL: {:?}", xlog_data_body,);
@@ -666,6 +706,9 @@ impl ClientMachine {
                                                 for (idx, data) in
                                                     tuple.data.into_iter().enumerate()
                                                 {
+                                                    //FIXME: This code is duplicated in Update and Delete
+                                                    //taht's ok for now since the interface for the logical
+                                                    //replication in replication mode is not clear yet.
                                                     match data.flag as char {
                                                         'n' => {
                                                             old_datarow.push(PgToRustTypes::Null)
@@ -695,6 +738,9 @@ impl ClientMachine {
                                                 for (idx, data) in
                                                     tuple.data.into_iter().enumerate()
                                                 {
+                                                    //FIXME: This code is duplicated in Update and Delete
+                                                    //taht's ok for now since the interface for the logical
+                                                    //replication in replication mode is not clear yet.
                                                     match data.flag as char {
                                                         'n' => {
                                                             old_datarow.push(PgToRustTypes::Null)
@@ -727,6 +773,9 @@ impl ClientMachine {
                                         for (idx, data) in
                                             message.new_tuple_data.data.into_iter().enumerate()
                                         {
+                                            //FIXME: This code is duplicated in Update and Delete
+                                            //taht's ok for now since the interface for the logical
+                                            //replication in replication mode is not clear yet.
                                             match data.flag as char {
                                                 'n' => old_datarow.push(PgToRustTypes::Null),
                                                 'u' => old_datarow
@@ -776,6 +825,9 @@ impl ClientMachine {
                                                 for (idx, data) in
                                                     tuple.data.into_iter().enumerate()
                                                 {
+                                                    //FIXME: This code is duplicated in Update and Delete
+                                                    //taht's ok for now since the interface for the logical
+                                                    //replication in replication mode is not clear yet.
                                                     match data.flag as char {
                                                         'n' => datarow.push(PgToRustTypes::Null),
                                                         'u' => datarow.push(
@@ -803,6 +855,9 @@ impl ClientMachine {
                                                 for (idx, data) in
                                                     tuple.data.into_iter().enumerate()
                                                 {
+                                                    //FIXME: This code is duplicated in Update and Delete
+                                                    //taht's ok for now since the interface for the logical
+                                                    //replication in replication mode is not clear yet.
                                                     match data.flag as char {
                                                         'n' => datarow.push(PgToRustTypes::Null),
                                                         'u' => datarow.push(
@@ -848,6 +903,7 @@ impl ClientMachine {
                         ),
                     };
                 }
+                //--- The primary can ask for a status update --------------------
                 StreamingReplicationMessageKind::PrimaryKeepAliveMessage => {
                     let primary_keep_alive_message =
                         PrimaryKeepAliveMessage::deserialize(&mut raw_message.body)?;
@@ -884,6 +940,7 @@ impl ClientMachine {
 
                     // self.tcp_stream.put_raw_message_and_flush(raw_copy_data)?;
                 }
+                //--- Other messages are sent as is ------------------------------
                 _ => (),
             }
         } else {
@@ -891,14 +948,4 @@ impl ClientMachine {
         }
         Ok(())
     }
-}
-
-fn lsn_split(value: i64) -> (i32, i32) {
-    let upper = (value >> 32) as i32;
-    let lower = value as u32 as i32;
-    (upper, lower)
-}
-
-fn lsn_create(upper: i32, lower: i32) -> i64 {
-    (upper as i64) << 32 | (lower as i64)
 }

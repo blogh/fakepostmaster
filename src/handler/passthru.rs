@@ -13,6 +13,13 @@ use crate::message::logical::*;
 use crate::message::streaming::*;
 use crate::message::*;
 
+// The passthru handler sits between two bases or between an application and the
+// target database. It could be used to intercept queries, time them or anonymize
+// the logical replication on the fly.
+
+//--------------------------------------------------------------------------------
+// General message stuff
+//--------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub enum Message {
     Frontend(FrontendMessageKind),
@@ -32,24 +39,44 @@ pub enum Context {
     CopyBoth(CBState),
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ReadFrom {
+    Frontend,       // Read from frontend wait if necessary
+    Backend,        // Read from backend wait if necessary
+    PreferFrontend, // Check on backend then read from frontend and wait if necessary
+    PreferBackend,  // Check on frontend then read from backend and wait if necessary
+}
+
+//--------------------------------------------------------------------------------
+// Simple Query context data
+//--------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub enum QState {
     Data(String),
     Done,
 }
 
+//--------------------------------------------------------------------------------
+// CopyIn context data
+//--------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub enum CIState {
     Data,
     Done,
 }
 
+//--------------------------------------------------------------------------------
+// CopyOut context data: Used by COPY OUT durectly or for logical repl init
+//--------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub enum COState {
     Data,
     Done,
 }
 
+//--------------------------------------------------------------------------------
+// CopyBoth context data: Used for streaming replicaiton
+//--------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub enum CBState {
     Data(CBData),
@@ -135,25 +162,24 @@ impl TryFrom<RColumnDescription> for CBColDesc {
     }
 }
 
+//--------------------------------------------------------------------------------
+// Anonymization function enum
+//--------------------------------------------------------------------------------
 #[derive(Debug)]
 pub enum Anonymize {
     i32(fn(i32) -> i32),
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum ReadFrom {
-    Frontend,       // Read from frontend wait if necessary
-    Backend,        // Read from backend wait if necessary
-    PreferFrontend, // Check on backend then read from frontend and wait if necessary
-    PreferBackend,  // Check on frontend then read from backend and wait if necessary
-}
-
+//--------------------------------------------------------------------------------
+// The Passthru "state machine"
+//--------------------------------------------------------------------------------
 #[derive(Debug)]
 pub struct PassThruMachine {
     last_message_kind: Option<Message>,
     context: Context,
     read_from: ReadFrom,
-    // use TcpStreams because BufReader doesn't have a has_data_left() outside of nightly rust
+    // use TcpStreams because BufReader doesn't have a has_data_left() outside of
+    // nightly rust
     be_stream: TcpStream,
     fe_stream: TcpStream,
     user: Option<String>,
@@ -166,6 +192,7 @@ pub struct PassThruMachine {
 }
 
 impl PassThruMachine {
+    /// Reveive a startup message from the client and send it to the backend
     pub fn connect(
         mut be_stream: TcpStream,
         mut fe_stream: TcpStream,
@@ -197,6 +224,7 @@ impl PassThruMachine {
         })
     }
 
+    /// process one message
     pub fn next(&mut self) -> anyhow::Result<Context> {
         let (current_message_kind, mut raw_message) = self.get_message()?;
 
@@ -205,6 +233,8 @@ impl PassThruMachine {
             &current_message_kind,
             &mut self.context,
         ) {
+            //--- Authentication -------------------------------------------------
+
             // The next message should be PasswordMessage, we read it from the frontend
             #[cfg_attr(rustfmt, rustfmt_skip)]
             (
@@ -245,6 +275,8 @@ impl PassThruMachine {
                     .insert("secret_key".to_string(), message.secret_key.to_string());
                 raw_message.send(&mut self.fe_stream)?;
             }
+
+            //--- Simple Query -------------------------------------------------
 
             // ReadyForQuery could be received from the authentication context or the query
             // context, After that we wait for the frontend to send us a query.
@@ -318,6 +350,8 @@ impl PassThruMachine {
                 raw_message.send(&mut self.fe_stream)?;
             }
 
+            //--- CopyOut --------------------------------------------------------
+
             // CopyOutResponse is sent after receiving a COPY TO STDOUT. The next message
             // should be a CopyData also sent by the Backend
             #[cfg_attr(rustfmt, rustfmt_skip)]
@@ -357,6 +391,8 @@ impl PassThruMachine {
                 raw_message.send(&mut self.fe_stream)?;
             }
 
+            //--- CopyIn --------------------------------------------------------
+
             // CopyInResponse is sent after receiving a COPY FROM STDIN. The next message
             // should be a CopyData sent by the frontend
             #[cfg_attr(rustfmt, rustfmt_skip)]
@@ -391,6 +427,8 @@ impl PassThruMachine {
                 self.context = Context::CopyIn(CIState::Done);
                 raw_message.send(&mut self.be_stream)?;
             }
+
+            //--- CopyBoth -------------------------------------------------------
 
             // CopyBothResponse is sent after receiving a request to stream data with
             // the logical replication. The next message should be a CopyData also sent
@@ -443,6 +481,8 @@ impl PassThruMachine {
                 raw_message.send(&mut self.fe_stream)?;
             }
 
+            //--- Async messages -------------------------------------------------
+
             // Async message can happend anytime, they can change the state
             // of the machine il they are ment to interrupt the flow of
             // message but it's not requiered
@@ -487,6 +527,8 @@ impl PassThruMachine {
                 self.context = Context::Disconnected;
             }
 
+            //--- Other messages and errors --------------------------------------
+
             // All acceptable message have to be sent to the appropriate target
             (Some(_), Message::Frontend(_), _) => {
                 raw_message.send(&mut self.be_stream)?;
@@ -509,6 +551,7 @@ impl PassThruMachine {
         Ok(self.context.clone())
     }
 
+    /// Read from the frontend or the backend without waiting for too long
     fn get_message(&mut self) -> anyhow::Result<(Message, RawMessage<MessageType>)> {
         match self.read_from {
             ReadFrom::Backend => {
@@ -561,6 +604,7 @@ impl PassThruMachine {
         }
     }
 
+    /// Process streaming messages (specially the logical ones)
     fn streaming_replication(
         &mut self,
         mut raw_message: RawMessage<MessageType>,
@@ -580,6 +624,7 @@ impl PassThruMachine {
             );
 
             match StreamingReplicationMessageKind::try_from(xlog_data_header.message_type)? {
+                //--- XLogData contains the replication data ---------------------
                 StreamingReplicationMessageKind::XLogData => {
                     let xlog_data_body = XLogData::deserialize(&mut raw_message.body)?;
                     debug!("DETAIL: {:?}", xlog_data_body,);
@@ -705,6 +750,7 @@ impl PassThruMachine {
                     };
                     saved_raw_message.send(&mut self.fe_stream)?;
                 }
+                //--- The primary can ask for a status update --------------------
                 StreamingReplicationMessageKind::PrimaryKeepAliveMessage => {
                     let primary_keep_alive_message =
                         PrimaryKeepAliveMessage::deserialize(&mut raw_message.body)?;
@@ -713,6 +759,7 @@ impl PassThruMachine {
 
                     saved_raw_message.send(&mut self.fe_stream)?;
                 }
+                //--- The standby can inform the primary of the progress ---------
                 StreamingReplicationMessageKind::StandbyStatusUpdate => {
                     let standby_system_update_message =
                         StandbyStatusUpdate::deserialize(&mut raw_message.body)?;
@@ -720,6 +767,7 @@ impl PassThruMachine {
 
                     saved_raw_message.send(&mut self.be_stream)?;
                 }
+                //--- Other messages are sent as is ------------------------------
                 _ => (),
             }
         } else {
@@ -729,8 +777,8 @@ impl PassThruMachine {
         Ok(needs_feedback)
     }
 
-    // Anonymize a tuple data if the tuple (relation, column position) exists in the
-    // self.anonymize_what hashmap. If we anonymize something we return Ok(true)
+    /// Anonymize a tuple data if the tuple (relation, column position) exists in the
+    /// self.anonymize_what hashmap. If we anonymize something we return Ok(true)
     fn anonymize(&self, relation: i32, tuple_data: &mut TupleData) -> anyhow::Result<bool> {
         let mut was_anonymized = false;
 
@@ -769,6 +817,7 @@ impl PassThruMachine {
     }
 }
 
+// Unused Kept for later
 fn lsn_split(value: i64) -> (i32, i32) {
     let upper = (value >> 32) as i32;
     let lower = value as u32 as i32;
