@@ -608,15 +608,32 @@ impl ClientMachine {
                                             .collect::<Vec<_>>()
                                             .join(", ");
 
+                                        //FIXME: This code is duplicated in Update and Delete
+                                        //taht's ok for now since the interface for the logical
+                                        //replication in replication mode is not clear yet.
                                         let mut datarow = Vec::new();
                                         for (idx, data) in
                                             message.new_tuple_data.data.into_iter().enumerate()
                                         {
-                                            //FIXME: column_value is a bad name
-                                            datarow.push(decode_from_text(
-                                                &data.column_value,
-                                                &relation.columns[idx].pg_type,
-                                            )?);
+                                            match data.flag as char {
+                                                'n' => datarow.push(PgToRustTypes::Null),
+                                                'u' => datarow
+                                                    .push(PgToRustTypes::UnchangedToastedData),
+                                                't' => {
+                                                    //FIXME: column_value is a bad name
+                                                    datarow.push(decode_from_text(
+                                                        &data
+                                                            .column_value
+                                                            .as_ref()
+                                                            .expect("This is a text format"),
+                                                        &relation.columns[idx].pg_type,
+                                                    )?);
+                                                }
+                                                'b' => {
+                                                    unimplemented!("binary format is not supported")
+                                                }
+                                                _ => unreachable!(),
+                                            }
                                         }
 
                                         info!(
@@ -649,22 +666,58 @@ impl ClientMachine {
                                                 for (idx, data) in
                                                     tuple.data.into_iter().enumerate()
                                                 {
-                                                    //FIXME: column_value is a bad name
-                                                    old_datarow.push(decode_from_text(
-                                                        &data.column_value,
-                                                        &relation.columns[idx].pg_type,
-                                                    )?);
+                                                    match data.flag as char {
+                                                        'n' => {
+                                                            old_datarow.push(PgToRustTypes::Null)
+                                                        }
+                                                        'u' => old_datarow.push(
+                                                            PgToRustTypes::UnchangedToastedData,
+                                                        ),
+                                                        't' => {
+                                                            //FIXME: column_value is a bad name
+                                                            old_datarow.push(decode_from_text(
+                                                                data.column_value.as_ref().expect(
+                                                                    "This is a text format",
+                                                                ),
+                                                                &relation.columns[idx].pg_type,
+                                                            )?);
+                                                        }
+                                                        'b' => {
+                                                            unimplemented!(
+                                                                "binary format is not supported"
+                                                            )
+                                                        }
+                                                        _ => unreachable!(),
+                                                    }
                                                 }
                                             }
                                             ReplicaIdentity::Key(tuple) => {
                                                 for (idx, data) in
                                                     tuple.data.into_iter().enumerate()
                                                 {
-                                                    //FIXME: column_value is a bad name
-                                                    old_datarow.push(decode_from_text(
-                                                        &data.column_value,
-                                                        &relation.columns[idx].pg_type,
-                                                    )?);
+                                                    match data.flag as char {
+                                                        'n' => {
+                                                            old_datarow.push(PgToRustTypes::Null)
+                                                        }
+                                                        'u' => old_datarow.push(
+                                                            PgToRustTypes::UnchangedToastedData,
+                                                        ),
+                                                        't' => {
+                                                            //FIXME: column_value is a bad name
+                                                            old_datarow.push(decode_from_text(
+                                                                data.column_value.as_ref().expect(
+                                                                    "This is a text format",
+                                                                ),
+                                                                &relation.columns[idx].pg_type,
+                                                            )?);
+                                                        }
+                                                        'b' => {
+                                                            unimplemented!(
+                                                                "binary format is not supported"
+                                                            )
+                                                        }
+                                                        _ => unreachable!(),
+                                                    }
                                                 }
                                             }
                                             _ => (),
@@ -674,11 +727,24 @@ impl ClientMachine {
                                         for (idx, data) in
                                             message.new_tuple_data.data.into_iter().enumerate()
                                         {
-                                            //FIXME: column_value is a bad name
-                                            new_datarow.push(decode_from_text(
-                                                &data.column_value,
-                                                &relation.columns[idx].pg_type,
-                                            )?);
+                                            match data.flag as char {
+                                                'n' => old_datarow.push(PgToRustTypes::Null),
+                                                'u' => old_datarow
+                                                    .push(PgToRustTypes::UnchangedToastedData),
+                                                't' => {
+                                                    //FIXME: column_value is a bad name
+                                                    new_datarow.push(decode_from_text(
+                                                        data.column_value
+                                                            .as_ref()
+                                                            .expect("This is a text format"),
+                                                        &relation.columns[idx].pg_type,
+                                                    )?);
+                                                }
+                                                'b' => {
+                                                    unimplemented!("binary format is not supported")
+                                                }
+                                                _ => unreachable!(),
+                                            }
                                         }
 
                                         info!(
@@ -710,22 +776,54 @@ impl ClientMachine {
                                                 for (idx, data) in
                                                     tuple.data.into_iter().enumerate()
                                                 {
-                                                    //FIXME: column_value is a bad name
-                                                    datarow.push(decode_from_text(
-                                                        &data.column_value,
-                                                        &relation.columns[idx].pg_type,
-                                                    )?);
+                                                    match data.flag as char {
+                                                        'n' => datarow.push(PgToRustTypes::Null),
+                                                        'u' => datarow.push(
+                                                            PgToRustTypes::UnchangedToastedData,
+                                                        ),
+                                                        't' => {
+                                                            //FIXME: column_value is a bad name
+                                                            datarow.push(decode_from_text(
+                                                                data.column_value.as_ref().expect(
+                                                                    "This is a text format",
+                                                                ),
+                                                                &relation.columns[idx].pg_type,
+                                                            )?);
+                                                        }
+                                                        'b' => {
+                                                            unimplemented!(
+                                                                "binary format is not supported"
+                                                            )
+                                                        }
+                                                        _ => unreachable!(),
+                                                    }
                                                 }
                                             }
                                             ReplicaIdentity::Key(tuple) => {
                                                 for (idx, data) in
                                                     tuple.data.into_iter().enumerate()
                                                 {
-                                                    //FIXME: column_value is a bad name
-                                                    datarow.push(decode_from_text(
-                                                        &data.column_value,
-                                                        &relation.columns[idx].pg_type,
-                                                    )?);
+                                                    match data.flag as char {
+                                                        'n' => datarow.push(PgToRustTypes::Null),
+                                                        'u' => datarow.push(
+                                                            PgToRustTypes::UnchangedToastedData,
+                                                        ),
+                                                        't' => {
+                                                            //FIXME: column_value is a bad name
+                                                            datarow.push(decode_from_text(
+                                                                data.column_value.as_ref().expect(
+                                                                    "This is a text format",
+                                                                ),
+                                                                &relation.columns[idx].pg_type,
+                                                            )?);
+                                                        }
+                                                        'b' => {
+                                                            unimplemented!(
+                                                                "binary format is not supported"
+                                                            )
+                                                        }
+                                                        _ => unreachable!(),
+                                                    }
                                                 }
                                             }
                                             _ => (),
@@ -754,6 +852,8 @@ impl ClientMachine {
                     let primary_keep_alive_message =
                         PrimaryKeepAliveMessage::deserialize(&mut raw_message.body)?;
                     debug!("DETAIL: {:?}", primary_keep_alive_message,);
+
+                    //FIXME:implement the StandbyStatusUpdate
 
                     // let standby_status_update = StandbyStatusUpdate {
                     //     reveived_lsn: self.streaming_data.expect("streaming_data should be Some in streaming").start_lsn + 1,
