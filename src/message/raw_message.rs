@@ -39,7 +39,7 @@ impl<T> RawMessage<T> {
     {
         stream.write(&self.header)?;
         stream.write(&self.body)?;
-        debug!("{}", self);
+        debug!("Sending {}", self);
         debug!("{:?}", self);
 
         Ok(())
@@ -464,7 +464,7 @@ impl RawMessage<MessageType> {
             header: buffer_header.into(),
             body: buffer_body.into(),
         };
-        debug!("{}", message);
+        debug!("Receiving {}", message);
         debug!("{:?}", message);
 
         Ok(message)
