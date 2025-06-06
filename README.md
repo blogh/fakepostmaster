@@ -39,9 +39,9 @@ in `$CRATE_ROOT/examples` namely `client` and `passthru`.
 
 Known limitation:
 
-* the cli is rough (two examples: client and passthru
-* TLS connexion are not supported (use ssl_mode=allow)
-* there is no async implementation
+* the cli is rough (two examples: `client` and `passthru`)
+* TLS connexion are not supported (use `sslmode=allow`)
+* there is no async implementation (yet?)
 
 # Examples
 
@@ -99,16 +99,21 @@ connexion to a PostgreSQL instance for queries or logical replication.
 
 Prerequisite: 
 
-* a target instance `pgsrv:5432` in the code
-* an interface/port to listen on `192.168.121.1:9092`
+* a target instance (here `192.168.121.1:9092`)
+* an interface/port to listen on (here `192.168.121.1:9092`)
 * the user must exist in the database and have the md5 authentication method
 configured in the `pg_hba.conf` and the password encryption.
-* the connexion must not use TLS
+* the connexion must not use TLS (`sslmode=allow`)
 
 Example: client
 
 ```bash
-cargo run --example passthru
+cargo run --example passthru --\
+  --listen-host 192.168.121.1\
+  --listen-port 9092\
+  --host 192.168.121.89\
+  --port 5432\
+  --debug
 ```
 
 In another session (PGPASSWORD is necessary, we  fail otherwise):
@@ -130,14 +135,19 @@ Example: replication
 We will need two instances for this.
 
 ```bash
-cargo run --example passthru
+cargo run --example passthru --\
+  --listen-host 192.168.121.1\
+  --listen-port 9092\
+  --host 192.168.121.89\
+  --port 5432\
+  --debug
 ```
 
-In one session connected to thepublication, create a publication:
+In one session connected to the publication, create a publication:
 
 ```sql
 -- cleanup the slot
--- /!\ it will kill all the slot (if possible)
+-- /!\ it will drop all the slot (if possible) /!\
 SELECT slot_name, pg_drop_replication_slot(slot_name) FROM pg_replication_slots; 
 
 -- create a publication
@@ -159,16 +169,23 @@ CREATE SUBSCRIPTION subtest
   PUBLICATION pub;
 ```
 
-INSERT UPDATE DELETE TRUNCATE on the table will be transferred.
+`INSERT`, `UPDATE`, `DELETE`, `TRUNCATE` on the table will be transferred.
 
-If you run the foillowing 
+If you run the foillowing:
 
 
 ```bash
-cargo run --example passthru -- --anonymize
+cargo run --example passthru --\
+  --listen-host 192.168.121.1\
+  --listen-port 9092\
+  --host 192.168.121.89\
+  --port 5432\
+  --anonymize\
+  --debug
 ```
 
-and update the oid on this line of `src/handler/client.rs`:
+... and update the oid on this line of `src/handler/client.rs` data should be
+anonymized on the fly.
 
 
 ```rust
