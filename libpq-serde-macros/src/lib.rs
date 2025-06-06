@@ -3,9 +3,15 @@ use proc_macro2;
 use quote::quote;
 use syn::{DeriveInput, Type};
 
+// Derive macro are executed at compile time and can generate code
+// base on a token stream which is produced from the code.
+
 //----------------------------------------------------------------------------------
 // Derive macro: SerdeLibpqData
 //----------------------------------------------------------------------------------
+
+//TODO: Cleanup the code once all cases are well understood and the interface is deemed
+//stable.
 
 // #[derive(Debug, deluxe::ExtractAttributes)]
 // #[deluxe(attributes(serde_libpq))]
