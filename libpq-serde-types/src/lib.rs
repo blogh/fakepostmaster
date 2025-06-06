@@ -2,6 +2,17 @@ use bytes::{Buf, Bytes, BytesMut};
 
 pub mod libpq_types;
 
+// This crate provides:
+//
+// * serialization / deserialization implementation for the basic types used in the messages
+// * trait for serialization / deserialization
+// * tests for the serialization / deserialization
+// * tests for the crate serde-libpq-macros (since derive macro must be put in a separate crate
+// and cannot be tested there
+
+//*----------------------------------------------------------------------------
+// Traits
+//*----------------------------------------------------------------------------
 pub trait Serialize {
     fn serialize(&self, buffer: &mut BytesMut);
 }
@@ -17,6 +28,9 @@ pub trait ByteSized {
     fn byte_size(&self) -> i32;
 }
 
+//*----------------------------------------------------------------------------
+// Derive marco tests
+//*----------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
     use super::*;

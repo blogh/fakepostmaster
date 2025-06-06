@@ -157,6 +157,9 @@ impl ByteSized for Byte4 {
 }
 
 //--------------------------------------------------------------------------------
+// CString are null delimted strings therefore they cannot contain
+// null characters.
+
 impl Serialize for CString {
     fn serialize(&self, buffer: &mut BytesMut) {
         buffer.put_slice(self.as_bytes());
@@ -215,6 +218,10 @@ pub struct VecWithEncoding<T, L> {
     length: std::marker::PhantomData<L>,
 }
 
+/// Arrays are implemented with a length "field" followed by the data, the
+/// length can be encoded as i16 or i32. In some cases like null delimited
+/// strings (e.g. in ParameterStatus), there is no size parameter, we continue
+/// until we find an additionnal null delimiter (0x00).
 impl<T, L> VecWithEncoding<T, L> {
     pub fn new() -> Self {
         Self {
@@ -452,6 +459,11 @@ where
 //--------------------------------------------------------------------------------
 // Implement empty arrays
 //--------------------------------------------------------------------------------
+// Some arrays can be empty if the size is -1. For this to work
+// the size must be i32.
+//TODO:the "API" works and is enought for our need but:
+//* there is no trait coercion here
+//* we assume the size is a i32
 
 impl<T> Serialize for Option<T>
 where
@@ -501,6 +513,9 @@ where
 //--------------------------------------------------------------------------------
 // Implement BytesArray
 //--------------------------------------------------------------------------------
+// Bytes are encoded in two parts
+// * i32 the length
+// * n Bytes where n is the size
 
 impl Serialize for Bytes {
     fn serialize(&self, buffer: &mut BytesMut) {
