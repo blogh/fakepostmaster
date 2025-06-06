@@ -2,42 +2,84 @@
 
 ## What?
 
-Do a mini server that process the libpq authentication part.
-
-* The C implementation is here: `PQconnectPoll()` (`src/interfaces/libpq/fe-connect.c`)
-* A Rust implementation example is [`pg_cat`](https://github.com/postgresml/pgcat/blob/main/src/client.rs#L324)
-  (or any other pooler)
-
-Doc:
+Implement the PostgreSQL wire protocol as defined here:
 
 * https://www.postgresql.org/docs/17/protocol-flow.html#PROTOCOL-FLOW-START-UP
 * https://www.postgresql.org/docs/17/protocol-message-types.html
 * https://www.postgresql.org/docs/17/protocol-message-formats.html
+* https://www.postgresql.org/docs/17/protocol-replication.html
+* https://www.postgresql.org/docs/17/protocol-logical-replication.html
+
+Note: the authentication is done:
+
+* in C, here: `PQconnectPoll()` (`src/interfaces/libpq/fe-connect.c`)
+* in Rust, here: [`pg_cat`](https://github.com/postgresml/pgcat/blob/main/src/client.rs#L324)
 
 ## Why?
 
-* it's fun
-* it could be useful for the "logical anonymization" of pg_anon
+Implementation of PostgreSQL's wire protocol usually cover the frontend side of
+things and program that need to implement the backend side of things do it in
+the code. That's why the messages are reimplemented here.
+
+It's an experiment to see, what we can do:
+
+* buffering logical replication
+* anonymize on the fly
+* track the activity submitted to the instance
+
+.. and to see how the protocol works.
 
 ## So?
 
-It's rought, works only with non TLS connexions, not async, mono-threaded and there is no tests.
-But it's a half day effort so...
+It's still very alpha code, not stable or full featured: a POC.
 
-# Example
+The main crate is a library, there is a derive macro crate (`libpq-serde-macros`) and
+a utility/test crate for encoding decoding (`libpq-serde-types`). There are examples
+in `$CRATE_ROOT/examples` namely `client` and `passthru`.
 
-## Normal connection
+Known limitation:
 
-On a first session, start the server:
+* the cli is rough (two examples: client and passthru
+* TLS connexion are not supported (use ssl_mode=allow)
+* there is no async implementation
+
+# Examples
+
+## client
+
+The purpose is to try to executes queries or consume modification from a slot.
 
 ```bash
-cargo run
+cargo run --example client query &> /tmp/log
 ```
-```text
-   Compiling fakepostmaster v0.1.0 (/home/benoit/Documents/mystuff/dev/rust/tests/fakepostmaster)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.27s
-     Running `target/debug/fakepostmaster`
-Listening on 192.168.121.1:9092
+
+This will a series of queries / commands. There is a lot of messages, so it's
+recommended to redirect to a log file and whatch what happended afterwards.
+
+```bash
+cargo run --example client replication &> /tmp/log
+```
+
+Thiw will consume the data from a slot, the configuration is directly in the
+code.
+
+## passthru
+
+The purpose is to have a proxy that can forward the data from a client
+connexion to a PostgreSQL instance for queries or logical replication.
+
+Prerequisite: 
+
+* a target instance `pgsrv:5432` in the code
+* an interface/port to listen on `192.168.121.1:9092`
+* the user must exist in the database and have the md5 authentication method
+configured in the `pg_hba.conf` and the password encryption.
+* the connexion must not use TLS
+
+Example: client
+
+```bash
+cargo run --example passthru
 ```
 
 In another session (PGPASSWORD is necessary, we  fail otherwise):
@@ -53,111 +95,65 @@ Type "help" for help.
 
 192.168.121.1:9092 benoit@benoit=>
 ```
-Note: The server version is not correct.
 
-On the server session:
+Example: replication
 
-```text
-accepted new connection
-Received: StartupMessage {
-    length: 80,
-    protocol_version: (
-        3,
-        0,
-    ),
-    parameters: {
-        "database": "benoit",
-        "user": "benoit",
-        "application_name": "psql",
-        "client_encoding": "UTF8",
-    },
-}
-Send: AuthenticationMD5Password { salt: [1, 2, 3, 4] }
-Received: PasswordMessage {
-    kind: 'p',
-    length: 40,
-    password: "md5cb8a43bdf51958828a459f426311fad8",
-}
-Send: AuthenticationOk
-Send: ReadyForQuery
-Request processed
-```
-
-## Replication connexion
-
-On a first session, start the server:
+We will need two instances for this.
 
 ```bash
-cargo run
-```
-```text
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.02s
-     Running `target/debug/fakepostmaster`
-Listening on 192.168.121.1:9092
+cargo run --example passthru
 ```
 
-In another session, connected to a real instance:
+In one session connected to thepublication, create a publication:
 
 ```sql
-postgres=# CREATE SUBSCRIPTION sub CONNECTION 'host=192.168.121.1 port=9092 password=p sslmode=allow' PUBLICATION pub;
-```
-```text
-ERROR:  could not connect to the publisher: could not clear search path: server closed the connection unexpectedly
-        This probably means the server terminated abnormally
-        before or while processing the request.
-```
+-- cleanup the slot
+-- /!\ it will kill all the slot (if possible)
+SELECT slot_name, pg_drop_replication_slot(slot_name) FROM pg_replication_slots; 
 
-On our server:
-
-```text
-accepted new connection
-Received: StartupMessage {
-    length: 104,
-    protocol_version: (
-        3,
-        0,
-    ),
-    parameters: {
-        "replication": "database",
-        "client_encoding": "UTF8",
-        "user": "postgres",
-        "database": "postgres",
-        "application_name": "sub",
-    },
-}
-Send: AuthenticationMD5Password { salt: [1, 2, 3, 4] }
-Received: PasswordMessage {
-    kind: 'p',
-    length: 40,
-    password: "md59e8ff8a1be9a30f9d95e66cab2eeacbd",
-}
-Send: AuthenticationOk
-Send: ReadyForQuery
-Received: Query {
-    kind: 'Q',
-    length: 60,
-    query: "SELECT pg_catalog.set_config('search_path', '', false);",
-}
-Request processed
+-- create a publication
+CREATE TABLE t(i int);
+CREATE PUBLICATION pub FOR TABLE t;
 ```
 
-# Memo: tcpdump ftw
+In one session connected to the subscription instance, create the subscription:
 
-````bash
-sudo tcpdump -i any port 9092 -X
-```
-```text
-...
-21:13:08.201980 vnet4 P   IP pgsrv.53744 > dalibl.9092: Flags [P.], seq 146:207, ack 30, win 502, options [nop,nop,TS val 3422236578 ecr 3908890869], length 61
-        0x0000:  4500 0071 aa0e 4000 4006 1ccd c0a8 7959  E..q..@.@.....yY
-        0x0010:  c0a8 7901 d1f0 2384 6255 0fad c5ea 4ea9  ..y...#.bU....N.
-        0x0020:  8018 01f6 740f 0000 0101 080a cbfb 2fa2  ....t........./.
-        0x0030:  e8fc f0f5 5100 0000 3c53 454c 4543 5420  ....Q...<SELECT.
-        0x0040:  7067 5f63 6174 616c 6f67 2e73 6574 5f63  pg_catalog.set_c
-        0x0050:  6f6e 6669 6728 2773 6561 7263 685f 7061  onfig('search_pa
-        0x0060:  7468 272c 2027 272c 2066 616c 7365 293b  th',.'',.false);
-        0x0070:  00                                       .
-...
+```sql
+-- cleanup
+ALTER SUBSCRIPTION subtest DISABLE; 
+ALTER SUBSCRIPTION subtest SET (slot_name = NONE); 
+DROP SUBSCRIPTION subtest ; 
+
+-- create a subscription
+CREATE SUBSCRIPTION subtest 
+  CONNECTION 'host=192.168.121.1 port=9092 user=md5userrl dbname=postgres sslmode=allow password=md5passrl' 
+  PUBLICATION pub;
 ```
 
+INSERT UPDATE DELETE TRUNCATE on the table will be transferred.
 
+If you run the foillowing 
+
+
+```bash
+cargo run --example passthru -- --anonymize
+```
+
+and update the oid on this line of `src/handler/client.rs`:
+
+
+```rust
+anonymize_what.insert((16453, 0), Anonymize::i32(|c: i32| c * -10)); // t.i
+```
+
+Note:
+
+* the first tuple `(16453, 0)` is `(relation_oid, column position)`
+* `Anonymize::i32(fn(i32) -> i32)`: identifies the type of the column as i32 (int) and
+  defines the prototype of the anonymization function
+* `|c: i32| c * -10)`: is a lambda function that takes an i32 and returns an i32. It could
+  be any valid rust code including other function calls. I suppose we could use a scripting
+  language (lua) to make this dynamic.
+
+The target is to have a more user friendly struct and build the Hashmap (`anonymize_what`)
+as we receive the `CopyData>XlogData>Relation` messages so that it's more usable.
