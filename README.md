@@ -45,23 +45,52 @@ Known limitation:
 
 # Examples
 
-## client
+## Client
 
 The purpose is to try to executes queries or consume modification from a slot.
 
-```bash
-cargo run --example client query &> /tmp/log
-```
-
-This will a series of queries / commands. There is a lot of messages, so it's
-recommended to redirect to a log file and whatch what happended afterwards.
+To submit queries:
 
 ```bash
-cargo run --example client replication &> /tmp/log
+cargo run --example client -- \
+  --host pgsrv \
+  --port 5432 \
+  --username md5user \
+  --database postgres \
+  --password md5pass \
+  query \
+    --use-sample
 ```
 
-Thiw will consume the data from a slot, the configuration is directly in the
-code.
+Or
+
+```bash
+cargo run --example client -- \
+  --host pgsrv \
+  --port 5432 \
+  --username md5user \
+  --database postgres \
+  --password md5pass \
+  query "SELECT 1" "SELECT relname, relpages FROM pg_class LIMIT 1"
+```
+
+Only Bool, Char, Name, Int8, Int4, Text and Oid are supported for the moment.
+
+For the logical replication (with the same limitations and more):
+
+```bash
+cargo run --example client -- \
+  --host pgsrv \
+  --port 5432 \
+  --username md5userrl \
+  --database postgres \
+  --password md5passrl \
+  replication pub slot
+```
+
+Thiw will read the data from a slot but not consume it (since StandbyStatusUpdate
+is not sent when PrimaryKeepAlive is received, which also means that if there is
+no activity, we get kicked after a while). 
 
 ## passthru
 

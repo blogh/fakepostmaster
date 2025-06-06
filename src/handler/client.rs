@@ -319,6 +319,7 @@ impl ClientMachine {
                 match self.query.pop() {
                     // We still have queries to process
                     Some(query) => {
+                        info!("Query: {}", query);
                         MessageBuilder::new_frontend_message()
                             .query(Query::new(query.clone())?)
                             .into_raw_message()
@@ -531,6 +532,11 @@ impl ClientMachine {
             (Some(_), Message::Backend(BackendMessageKind::ParameterStatus), _) => {
                 let message = ParameterStatus::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:?}");
+                warn!(
+                    "Server parameters: '{}' = '{}'",
+                    message.name.to_string_lossy(),
+                    message.value.to_string_lossy()
+                );
                 self.server_parameters
                     .insert(message.name.into_string()?, message.value.into_string()?);
             }
@@ -540,6 +546,7 @@ impl ClientMachine {
                 self.context = Context::Disconnected;
                 let message = ErrorResponse::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:#?}");
+                error!("{}", format_err_msg(&message.messages));
             }
 
             // .. Otherwise we return it to the client en continue
@@ -547,11 +554,13 @@ impl ClientMachine {
                 self.context = Context::Disconnected;
                 let message = ErrorResponse::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:#?}");
+                error!("{}", format_err_msg(&message.messages));
             }
 
             (_, Message::Backend(BackendMessageKind::NoticeResponse), _) => {
                 let message = NoticeResponse::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:#?}");
+                warn!("{}", format_err_msg(&message.messages));
             }
 
             // The Frontend can terminate gracefully the connection with Terminate
@@ -948,4 +957,47 @@ impl ClientMachine {
         }
         Ok(())
     }
+}
+
+//FIXME: Find a better house for this (probably std::fmt::Display on the message?)
+fn format_err_msg(messages: &VecWithEncoding<ErrorMessage, NullLength>) -> String {
+    let mut mtype: Option<String> = None;
+    let mut code: Option<String> = None;
+    let mut txt: Option<String> = None;
+    for msg in messages.iter() {
+        match msg.code {
+            83 => {
+                mtype = Some(
+                    msg.message
+                        .clone()
+                        .into_string()
+                        .expect("The message type should be a valid string"),
+                )
+            }
+            67 => {
+                code = Some(
+                    msg.message
+                        .clone()
+                        .into_string()
+                        .expect("The message code should be a valid string"),
+                )
+            }
+            77 => {
+                txt = Some(
+                    msg.message
+                        .clone()
+                        .into_string()
+                        .expect("The message text should be a valid string"),
+                )
+            }
+            _ => (),
+        }
+    }
+    //FIXME: remove the unwrap here
+    format!(
+        "{:?}: ({:?}) {:?}",
+        mtype.unwrap(),
+        code.unwrap(),
+        txt.unwrap()
+    )
 }
