@@ -165,7 +165,7 @@ impl TryFrom<RColumnDescription> for CBColDesc {
 //--------------------------------------------------------------------------------
 // Anonymization function enum
 //--------------------------------------------------------------------------------
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Anonymize {
     i32(fn(i32) -> i32),
 }
@@ -185,6 +185,7 @@ pub struct PassThruMachine {
     user: Option<String>,
     database: Option<String>,
     anonymize: bool,
+    anonymize_order: HashMap<(String, String, String), Anonymize>,
     anonymize_what: HashMap<(i32, i32), Anonymize>,
     application_name: Option<String>,
     client_parameters: HashMap<String, String>,
@@ -203,10 +204,21 @@ impl PassThruMachine {
         raw_startup_request.send(&mut be_stream)?;
         let startup_message = StartupMessage::try_from(&mut raw_startup_request)?;
 
-        let mut anonymize_what = HashMap::<(i32, i32), Anonymize>::new();
-        anonymize_what.insert((16453, 0), Anonymize::i32(|c: i32| c * -10)); // t.i
-        anonymize_what.insert((16468, 1), Anonymize::i32(|c: i32| c * -100)); // tt.j
-        anonymize_what.insert((16468, 2), Anonymize::i32(|c: i32| c * -10)); // tt.k
+        let mut anonymize_order = HashMap::<(String, String, String), Anonymize>::new();
+        anonymize_order.insert(
+            ("public".into(), "t".into(), "i".into()),
+            Anonymize::i32(|c: i32| c * -1),
+        );
+        anonymize_order.insert(
+            ("public".into(), "tt".into(), "j".into()),
+            Anonymize::i32(|c: i32| c * -10),
+        );
+        anonymize_order.insert(
+            ("public".into(), "tt".into(), "k".into()),
+            Anonymize::i32(|c: i32| c * -100),
+        );
+
+        let anonymize_what = HashMap::<(i32, i32), Anonymize>::new();
 
         Ok(Self {
             last_message_kind: None,
@@ -218,6 +230,7 @@ impl PassThruMachine {
             database: None,
             application_name: None,
             anonymize,
+            anonymize_order,
             anonymize_what,
             client_parameters: HashMap::<String, String>::try_from(&startup_message)?,
             server_parameters: HashMap::<String, String>::new(),
@@ -634,6 +647,20 @@ impl PassThruMachine {
                         LogicalReplicationMessageKind::Relation => {
                             let message = Relation::deserialize(&mut raw_message.body)?;
                             debug!("DETAIL: {:?}", message,);
+                            for (idx, col) in message.columns.iter().enumerate() {
+                                match self.anonymize_order.get(&(
+                                    message.namespace.clone().into_string()?,
+                                    message.relname.clone().into_string()?,
+                                    col.name.clone().into_string()?,
+                                )) {
+                                    Some(f) => {
+                                        self.anonymize_what
+                                            .insert((message.rel_oid, idx as i32), (*f).clone());
+                                        info!("Anonymize what? {:?}", self.anonymize_what);
+                                    }
+                                    None => (),
+                                };
+                            }
                         }
                         LogicalReplicationMessageKind::Begin => {
                             let message = Begin::deserialize(&mut raw_message.body)?;
