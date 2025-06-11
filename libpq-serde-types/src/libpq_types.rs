@@ -1,6 +1,5 @@
 use anyhow::anyhow;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use std::ffi::CString;
 use std::ops::{Index, IndexMut};
 
 use crate::{ByteSized, Deserialize, Serialize};
@@ -13,8 +12,9 @@ use crate::{ByteSized, Deserialize, Serialize};
 //--------------------------------------------------------------------------------
 
 impl Serialize for i8 {
-    fn serialize(&self, buffer: &mut BytesMut) {
+    fn serialize(&self, buffer: &mut BytesMut) -> anyhow::Result<()> {
         buffer.put_i8(*self);
+        Ok(())
     }
 }
 
@@ -36,8 +36,9 @@ impl ByteSized for i8 {
 
 //--------------------------------------------------------------------------------
 impl Serialize for i16 {
-    fn serialize(&self, buffer: &mut BytesMut) {
+    fn serialize(&self, buffer: &mut BytesMut) -> anyhow::Result<()> {
         buffer.put_i16(*self);
+        Ok(())
     }
 }
 
@@ -59,8 +60,9 @@ impl ByteSized for i16 {
 
 //--------------------------------------------------------------------------------
 impl Serialize for i32 {
-    fn serialize(&self, buffer: &mut BytesMut) {
+    fn serialize(&self, buffer: &mut BytesMut) -> anyhow::Result<()> {
         buffer.put_i32(*self);
+        Ok(())
     }
 }
 
@@ -82,8 +84,9 @@ impl ByteSized for i32 {
 
 //--------------------------------------------------------------------------------
 impl Serialize for i64 {
-    fn serialize(&self, buffer: &mut BytesMut) {
+    fn serialize(&self, buffer: &mut BytesMut) -> anyhow::Result<()> {
         buffer.put_i64(*self);
+        Ok(())
     }
 }
 
@@ -107,8 +110,9 @@ impl ByteSized for i64 {
 pub type Byte = u8;
 
 impl Serialize for Byte {
-    fn serialize(&self, buffer: &mut BytesMut) {
+    fn serialize(&self, buffer: &mut BytesMut) -> anyhow::Result<()> {
         buffer.put_u8(*self);
+        Ok(())
     }
 }
 
@@ -133,8 +137,9 @@ impl ByteSized for Byte {
 pub type Byte4 = [u8; 4];
 
 impl Serialize for Byte4 {
-    fn serialize(&self, buffer: &mut BytesMut) {
+    fn serialize(&self, buffer: &mut BytesMut) -> anyhow::Result<()> {
         buffer.put_slice(self);
+        Ok(())
     }
 }
 
@@ -157,17 +162,21 @@ impl ByteSized for Byte4 {
 }
 
 //--------------------------------------------------------------------------------
-// CString are null delimted strings therefore they cannot contain
-// null characters.
+// We ensure that the string doesn't contain a null terminated value before
+// encoding it. We could use CStrings (we used to) but it's a pain in the code.
 
-impl Serialize for CString {
-    fn serialize(&self, buffer: &mut BytesMut) {
+impl Serialize for String {
+    fn serialize(&self, buffer: &mut BytesMut) -> anyhow::Result<()> {
+        if self.as_bytes().iter().any(|&c| c == 0x00) {
+            return Err(anyhow!("null terminator in String sent for encoding"));
+        }
         buffer.put_slice(self.as_bytes());
         buffer.put_u8(0);
+        Ok(())
     }
 }
 
-impl Deserialize for CString {
+impl Deserialize for String {
     fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
     where
         Self: Sized,
@@ -181,16 +190,13 @@ impl Deserialize for CString {
             c = buffer.try_get_u8()?;
         }
 
-        // This operation is safe because we stopped copying data when
-        // we reached the first 0x00 therefore there is no 0x00 in the
-        // middle of the CString
-        Ok(unsafe { CString::from_vec_unchecked(v) })
+        Ok(String::from_utf8(v)?)
     }
 }
 
-impl ByteSized for CString {
+impl ByteSized for String {
     fn byte_size(&self) -> i32 {
-        self.count_bytes() as i32 + 1
+        self.bytes().len() as i32 + 1
     }
 }
 
@@ -318,13 +324,14 @@ impl<T> Serialize for VecWithEncoding<T, Length16>
 where
     T: Serialize,
 {
-    fn serialize(&self, buffer: &mut BytesMut) {
+    fn serialize(&self, buffer: &mut BytesMut) -> anyhow::Result<()> {
         // length
-        (self.data.len() as i16).serialize(buffer);
+        (self.data.len() as i16).serialize(buffer)?;
         // data
         for elt in &self.data {
-            elt.serialize(buffer);
+            elt.serialize(buffer)?;
         }
+        Ok(())
     }
 }
 
@@ -332,13 +339,14 @@ impl<T> Serialize for VecWithEncoding<T, Length32>
 where
     T: Serialize,
 {
-    fn serialize(&self, buffer: &mut BytesMut) {
+    fn serialize(&self, buffer: &mut BytesMut) -> anyhow::Result<()> {
         // length
-        (self.data.len() as i32).serialize(buffer);
+        (self.data.len() as i32).serialize(buffer)?;
         // data
         for elt in &self.data {
-            elt.serialize(buffer);
+            elt.serialize(buffer)?;
         }
+        Ok(())
     }
 }
 
@@ -346,12 +354,13 @@ impl<T> Serialize for VecWithEncoding<T, NullLength>
 where
     T: Serialize,
 {
-    fn serialize(&self, buffer: &mut BytesMut) {
+    fn serialize(&self, buffer: &mut BytesMut) -> anyhow::Result<()> {
         // data
         for elt in &self.data {
-            elt.serialize(buffer);
+            elt.serialize(buffer)?;
         }
         buffer.put_u8(0x00);
+        Ok(())
     }
 }
 
@@ -469,11 +478,12 @@ impl<T> Serialize for Option<T>
 where
     T: Serialize,
 {
-    fn serialize(&self, buffer: &mut BytesMut) {
+    fn serialize(&self, buffer: &mut BytesMut) -> anyhow::Result<()> {
         match self {
-            Some(t) => t.serialize(buffer),
+            Some(t) => t.serialize(buffer)?,
             None => buffer.put_slice(&[0xFF, 0xFF, 0xFF, 0xFF]),
-        }
+        };
+        Ok(())
     }
 }
 
@@ -518,9 +528,10 @@ where
 // * n Bytes where n is the size
 
 impl Serialize for Bytes {
-    fn serialize(&self, buffer: &mut BytesMut) {
-        (self.len() as i32).serialize(buffer);
+    fn serialize(&self, buffer: &mut BytesMut) -> anyhow::Result<()> {
+        (self.len() as i32).serialize(buffer)?;
         buffer.put_slice(&self.slice(0..self.len()));
+        Ok(())
     }
 }
 
@@ -559,7 +570,7 @@ mod test {
     #[test]
     fn i8_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
-        5_i8.serialize(&mut m);
+        5_i8.serialize(&mut m)?;
         assert_eq!(vec![5_u8], m.to_vec());
 
         Ok(())
@@ -584,7 +595,7 @@ mod test {
     #[test]
     fn i16_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
-        5_i16.serialize(&mut m);
+        5_i16.serialize(&mut m)?;
         assert_eq!(vec![0_u8, 5_u8], m.to_vec());
 
         Ok(())
@@ -609,7 +620,7 @@ mod test {
     #[test]
     fn i32_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
-        5_i32.serialize(&mut m);
+        5_i32.serialize(&mut m)?;
         assert_eq!(vec![0_u8, 0_u8, 0_u8, 5_u8], m.to_vec());
 
         Ok(())
@@ -634,7 +645,7 @@ mod test {
     #[test]
     fn i64_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
-        5_i64.serialize(&mut m);
+        5_i64.serialize(&mut m)?;
         assert_eq!(
             vec![0_u8, 0_u8, 0_u8, 0_u8, 0_u8, 0_u8, 0_u8, 5_u8],
             m.to_vec()
@@ -662,7 +673,7 @@ mod test {
     #[test]
     fn byte_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
-        ('A' as u8).serialize(&mut m);
+        ('A' as u8).serialize(&mut m)?;
         assert_eq!(vec!['A' as u8], m.to_vec());
 
         Ok(())
@@ -685,9 +696,9 @@ mod test {
 
     //----------------------------------------------------------------------------
     #[test]
-    fn cstring_serialize() -> anyhow::Result<()> {
+    fn string_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
-        CString::new("aldabis")?.serialize(&mut m);
+        String::from("aldabis").serialize(&mut m)?;
         assert_eq!(
             vec![
                 'a' as u8, 'l' as u8, 'd' as u8, 'a' as u8, 'b' as u8, 'i' as u8, 's' as u8, 0
@@ -699,24 +710,32 @@ mod test {
     }
 
     #[test]
-    fn cstring_deserialize() -> anyhow::Result<()> {
-        let mut buffer = Bytes::from_static(&[
-            'a' as u8, 'l' as u8, 'd' as u8, 'a' as u8, 'b' as u8, 'i' as u8, 's' as u8, 0,
-        ]);
-        assert_eq!(CString::new("aldabis")?, CString::deserialize(&mut buffer)?);
-
-        //FIXME:
-        //let buffer: [u8; 0] = [];
-        //let cursor = Cursor::new(buffer);
-        //let mut buffer_reader = BufReader::new(cursor);
-        //assert_eq!(CString::new("")?, CString::deserialize(&mut buffer_reader)?);
+    fn string_serialize_with_null() -> anyhow::Result<()> {
+        let mut m = BytesMut::new();
+        assert!(
+            String::from_utf8(vec![
+                'a' as u8, 'l' as u8, 'd' as u8, 0x00, 'b' as u8, 'i' as u8, 's' as u8,
+            ])?
+            .serialize(&mut m)
+            .is_err()
+        );
 
         Ok(())
     }
 
     #[test]
-    fn cstring_byte_size() -> anyhow::Result<()> {
-        assert_eq!(8, CString::new("aldabis")?.byte_size());
+    fn string_deserialize() -> anyhow::Result<()> {
+        let mut buffer = Bytes::from_static(&[
+            'a' as u8, 'l' as u8, 'd' as u8, 'a' as u8, 'b' as u8, 'i' as u8, 's' as u8, 0,
+        ]);
+        assert_eq!(String::from("aldabis"), String::deserialize(&mut buffer)?);
+
+        Ok(())
+    }
+
+    #[test]
+    fn string_byte_size() -> anyhow::Result<()> {
+        assert_eq!(8, String::from("aldabis").byte_size());
 
         Ok(())
     }
@@ -726,7 +745,7 @@ mod test {
     fn vec32_i32_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: VecWithEncoding<i32, Length32> = VecWithEncoding::from(vec![1, 2, 3, 4, 5]);
-        v.serialize(&mut m);
+        v.serialize(&mut m)?;
         assert_eq!(
             vec![
                 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
@@ -742,7 +761,7 @@ mod test {
     fn vec32_byte_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: VecWithEncoding<Byte, Length32> = VecWithEncoding::from(vec![1, 2, 3, 4, 5]);
-        v.serialize(&mut m);
+        v.serialize(&mut m)?;
         assert_eq!(
             vec![0x00, 0x00, 0x00, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05,],
             m.to_vec()
@@ -754,9 +773,9 @@ mod test {
     #[test]
     fn vec32_cstring_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
-        let v: VecWithEncoding<CString, Length32> =
-            VecWithEncoding::from(vec![CString::new("aldabis")?, CString::new("aldabis")?]);
-        v.serialize(&mut m);
+        let v: VecWithEncoding<String, Length32> =
+            VecWithEncoding::from(vec![String::from("aldabis"), String::from("aldabis")]);
+        v.serialize(&mut m)?;
         assert_eq!(
             vec![
                 0x00, 0x00, 0x00, 0x02, 'a' as u8, 'l' as u8, 'd' as u8, 'a' as u8, 'b' as u8,
@@ -772,8 +791,8 @@ mod test {
     #[test]
     fn vec32_empty_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
-        let v: VecWithEncoding<CString, Length32> = VecWithEncoding::new();
-        v.serialize(&mut m);
+        let v: VecWithEncoding<String, Length32> = VecWithEncoding::new();
+        v.serialize(&mut m)?;
         assert_eq!(vec![0x00, 0x00, 0x00, 0x00,], m.to_vec());
 
         Ok(())
@@ -812,11 +831,11 @@ mod test {
             'i' as u8, 's' as u8, 0,
         ]);
         assert_eq!(
-            VecWithEncoding::<CString, Length32>::from(vec![
-                CString::new("aldabis")?,
-                CString::new("aldabis")?
+            VecWithEncoding::<String, Length32>::from(vec![
+                String::from("aldabis"),
+                String::from("aldabis")
             ]),
-            VecWithEncoding::<CString, Length32>::deserialize(&mut buffer)?
+            VecWithEncoding::<String, Length32>::deserialize(&mut buffer)?
         );
 
         Ok(())
@@ -826,8 +845,8 @@ mod test {
     fn vec32_empty_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[0x00, 0x00, 0x00, 0x00]);
         assert_eq!(
-            VecWithEncoding::<CString, Length32>::new(),
-            VecWithEncoding::<CString, Length32>::deserialize(&mut buffer)?
+            VecWithEncoding::<String, Length32>::new(),
+            VecWithEncoding::<String, Length32>::deserialize(&mut buffer)?
         );
 
         Ok(())
@@ -855,9 +874,9 @@ mod test {
     fn vec32_cstring_byte_size() -> anyhow::Result<()> {
         assert_eq!(
             20,
-            VecWithEncoding::<CString, Length32>::from(vec![
-                CString::new("aldabis")?,
-                CString::new("aldabis")?
+            VecWithEncoding::<String, Length32>::from(vec![
+                String::from("aldabis"),
+                String::from("aldabis")
             ])
             .byte_size()
         );
@@ -868,7 +887,7 @@ mod test {
     fn vec32_empty_byte_size() -> anyhow::Result<()> {
         assert_eq!(
             4,
-            VecWithEncoding::<CString, Length32>::from(vec![]).byte_size()
+            VecWithEncoding::<String, Length32>::from(vec![]).byte_size()
         );
         Ok(())
     }
@@ -878,7 +897,7 @@ mod test {
     fn vec16_i32_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: VecWithEncoding<i32, Length16> = VecWithEncoding::from(vec![1, 2, 3, 4, 5]);
-        v.serialize(&mut m);
+        v.serialize(&mut m)?;
         assert_eq!(
             vec![
                 0x00, 0x05, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03,
@@ -894,7 +913,7 @@ mod test {
     fn vec16_byte_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: VecWithEncoding<Byte, Length16> = VecWithEncoding::from(vec![1, 2, 3, 4, 5]);
-        v.serialize(&mut m);
+        v.serialize(&mut m)?;
         assert_eq!(vec![0x00, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05,], m.to_vec());
 
         Ok(())
@@ -903,9 +922,9 @@ mod test {
     #[test]
     fn vec16_cstring_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
-        let v: VecWithEncoding<CString, Length16> =
-            VecWithEncoding::from(vec![CString::new("aldabis")?, CString::new("aldabis")?]);
-        v.serialize(&mut m);
+        let v: VecWithEncoding<String, Length16> =
+            VecWithEncoding::from(vec![String::from("aldabis"), String::from("aldabis")]);
+        v.serialize(&mut m)?;
         assert_eq!(
             vec![
                 0x00, 0x02, 'a' as u8, 'l' as u8, 'd' as u8, 'a' as u8, 'b' as u8, 'i' as u8,
@@ -921,8 +940,8 @@ mod test {
     #[test]
     fn vec16_empty_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
-        let v: VecWithEncoding<CString, Length16> = VecWithEncoding::new();
-        v.serialize(&mut m);
+        let v: VecWithEncoding<String, Length16> = VecWithEncoding::new();
+        v.serialize(&mut m)?;
         assert_eq!(vec![0x00, 0x00,], m.to_vec());
 
         Ok(())
@@ -961,11 +980,11 @@ mod test {
             's' as u8, 0,
         ]);
         assert_eq!(
-            VecWithEncoding::<CString, Length16>::from(vec![
-                CString::new("aldabis")?,
-                CString::new("aldabis")?
+            VecWithEncoding::<String, Length16>::from(vec![
+                String::from("aldabis"),
+                String::from("aldabis")
             ]),
-            VecWithEncoding::<CString, Length16>::deserialize(&mut buffer)?
+            VecWithEncoding::<String, Length16>::deserialize(&mut buffer)?
         );
 
         Ok(())
@@ -975,8 +994,8 @@ mod test {
     fn vec16_empty_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[0x00, 0x00]);
         assert_eq!(
-            VecWithEncoding::<CString, Length16>::new(),
-            VecWithEncoding::<CString, Length16>::deserialize(&mut buffer)?
+            VecWithEncoding::<String, Length16>::new(),
+            VecWithEncoding::<String, Length16>::deserialize(&mut buffer)?
         );
 
         Ok(())
@@ -1004,9 +1023,9 @@ mod test {
     fn vec16_cstring_byte_size() -> anyhow::Result<()> {
         assert_eq!(
             18,
-            VecWithEncoding::<CString, Length16>::from(vec![
-                CString::new("aldabis")?,
-                CString::new("aldabis")?
+            VecWithEncoding::<String, Length16>::from(vec![
+                String::from("aldabis"),
+                String::from("aldabis")
             ])
             .byte_size()
         );
@@ -1017,7 +1036,7 @@ mod test {
     fn vec16_empty_byte_size() -> anyhow::Result<()> {
         assert_eq!(
             2,
-            VecWithEncoding::<CString, Length16>::from(vec![]).byte_size()
+            VecWithEncoding::<String, Length16>::from(vec![]).byte_size()
         );
         Ok(())
     }
@@ -1027,7 +1046,7 @@ mod test {
     fn vecnull_i32_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: VecWithEncoding<i32, NullLength> = VecWithEncoding::from(vec![1, 2, 3, 4, 5]);
-        v.serialize(&mut m);
+        v.serialize(&mut m)?;
         assert_eq!(
             vec![
                 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00,
@@ -1043,7 +1062,7 @@ mod test {
     fn vecnull_byte_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v: VecWithEncoding<Byte, NullLength> = VecWithEncoding::from(vec![1, 2, 3, 4, 5]);
-        v.serialize(&mut m);
+        v.serialize(&mut m)?;
         assert_eq!(vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x00], m.to_vec());
 
         Ok(())
@@ -1052,9 +1071,9 @@ mod test {
     #[test]
     fn vecnull_cstring_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
-        let v: VecWithEncoding<CString, NullLength> =
-            VecWithEncoding::from(vec![CString::new("aldabis")?, CString::new("aldabis")?]);
-        v.serialize(&mut m);
+        let v: VecWithEncoding<String, NullLength> =
+            VecWithEncoding::from(vec![String::from("aldabis"), String::from("aldabis")]);
+        v.serialize(&mut m)?;
         assert_eq!(
             vec![
                 'a' as u8, 'l' as u8, 'd' as u8, 'a' as u8, 'b' as u8, 'i' as u8, 's' as u8, 0,
@@ -1070,8 +1089,8 @@ mod test {
     #[test]
     fn vecnull_empty_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
-        let v: VecWithEncoding<CString, NullLength> = VecWithEncoding::new();
-        v.serialize(&mut m);
+        let v: VecWithEncoding<String, NullLength> = VecWithEncoding::new();
+        v.serialize(&mut m)?;
         assert_eq!(vec![0x00,], m.to_vec());
 
         Ok(())
@@ -1107,11 +1126,11 @@ mod test {
             'a' as u8, 'l' as u8, 'd' as u8, 'a' as u8, 'b' as u8, 'i' as u8, 's' as u8, 0, 0,
         ]);
         assert_eq!(
-            VecWithEncoding::<CString, NullLength>::from(vec![
-                CString::new("aldabis")?,
-                CString::new("aldabis")?
+            VecWithEncoding::<String, NullLength>::from(vec![
+                String::from("aldabis"),
+                String::from("aldabis")
             ]),
-            VecWithEncoding::<CString, NullLength>::deserialize(&mut buffer)?
+            VecWithEncoding::<String, NullLength>::deserialize(&mut buffer)?
         );
         Ok(())
     }
@@ -1120,8 +1139,8 @@ mod test {
     fn vecnull_empty_deserialize() -> anyhow::Result<()> {
         let mut buffer = Bytes::from_static(&[0x00]);
         assert_eq!(
-            VecWithEncoding::<CString, NullLength>::new(),
-            VecWithEncoding::<CString, NullLength>::deserialize(&mut buffer)?
+            VecWithEncoding::<String, NullLength>::new(),
+            VecWithEncoding::<String, NullLength>::deserialize(&mut buffer)?
         );
 
         Ok(())
@@ -1149,9 +1168,9 @@ mod test {
     fn vecnull_cstring_byte_size() -> anyhow::Result<()> {
         assert_eq!(
             17,
-            VecWithEncoding::<CString, NullLength>::from(vec![
-                CString::new("aldabis")?,
-                CString::new("aldabis")?
+            VecWithEncoding::<String, NullLength>::from(vec![
+                String::from("aldabis"),
+                String::from("aldabis")
             ])
             .byte_size()
         );
@@ -1162,7 +1181,7 @@ mod test {
     fn vecnull_empty_byte_size() -> anyhow::Result<()> {
         assert_eq!(
             1,
-            VecWithEncoding::<CString, NullLength>::from(vec![]).byte_size()
+            VecWithEncoding::<String, NullLength>::from(vec![]).byte_size()
         );
         Ok(())
     }
@@ -1171,7 +1190,7 @@ mod test {
     fn optionvec32_none_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let o: Option<VecWithEncoding<i32, Length32>> = None;
-        o.serialize(&mut m);
+        o.serialize(&mut m)?;
 
         assert_eq!(vec![0xFF, 0xFF, 0xFF, 0xFF], m.to_vec());
 
@@ -1182,7 +1201,7 @@ mod test {
     fn optionvec32_some_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let o: Option<VecWithEncoding<i32, Length32>> = Some(VecWithEncoding::from(vec![1_i32]));
-        o.serialize(&mut m);
+        o.serialize(&mut m)?;
 
         assert_eq!(
             vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01],
@@ -1259,7 +1278,7 @@ mod test {
     fn bytes_serialize() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v = Bytes::from_static(&[1_u8, 2, 3, 4, 5]);
-        v.serialize(&mut m);
+        v.serialize(&mut m)?;
         assert_eq!(
             vec![0x00, 0x00, 0x00, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05,],
             m.to_vec()
@@ -1271,7 +1290,7 @@ mod test {
     fn bytes_bytes_size() -> anyhow::Result<()> {
         let mut m = BytesMut::new();
         let v = Bytes::from_static(&[1_u8, 2, 3, 4, 5]);
-        v.serialize(&mut m);
+        v.serialize(&mut m)?;
         assert_eq!(9, v.byte_size());
         Ok(())
     }

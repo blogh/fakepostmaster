@@ -14,7 +14,7 @@ pub mod libpq_types;
 // Traits
 //*----------------------------------------------------------------------------
 pub trait Serialize {
-    fn serialize(&self, buffer: &mut BytesMut);
+    fn serialize(&self, buffer: &mut BytesMut) -> anyhow::Result<()>;
 }
 
 pub trait Deserialize {

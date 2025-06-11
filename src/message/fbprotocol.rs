@@ -2,7 +2,6 @@ use anyhow::anyhow;
 use bytes::Bytes;
 use md5::{Digest, Md5};
 use std::collections::HashMap;
-use std::ffi::CString;
 
 use libpq_serde_macros::{MessageBody, SerdeLibpqData, TryFromRawMessage};
 use libpq_serde_types::{
@@ -490,15 +489,7 @@ impl BackendKeyData {
 #[derive(Debug, PartialEq, SerdeLibpqData, MessageBody, TryFromRawMessage)]
 #[message_body(kind = 'C')]
 pub struct CommandComplete {
-    pub command_tag: CString,
-}
-
-impl CommandComplete {
-    pub fn new(command_tag: String) -> anyhow::Result<Self> {
-        Ok(Self {
-            command_tag: CString::new(&command_tag[..])?,
-        })
-    }
+    pub command_tag: String,
 }
 
 // CopyData (F & B)
@@ -525,7 +516,7 @@ pub struct CopyDone {}
 #[derive(Debug, PartialEq, SerdeLibpqData, MessageBody, TryFromRawMessage)]
 #[message_body(kind = 'f')]
 pub struct CopyFail {
-    pub error_message: CString,
+    pub error_message: String,
 }
 
 // CopyInResponse (B)
@@ -596,18 +587,7 @@ pub struct CopyBothResponse {
 pub struct DataRow {
     // The serialization will create a length field
     pub columns: VecWithEncoding<Option<Bytes>, Length16>,
-    //pub columns: VecWithEncoding<ColumnData, Length16>,
 }
-
-//impl DataRow {
-//    pub fn new(columns: Vec<Bytes>) -> Self {
-//        Self {
-//            columns: columns.into(),
-//        }
-//    }
-//}
-//
-//pub type ColumnData = Option<VecWithEncoding<Byte, Length32>>;
 
 // Describe (F)
 // * Byte1('D') Identifies the message as a Describe command.
@@ -652,16 +632,7 @@ pub struct ErrorMessage {
     // Identifier: https://www.postgresql.org/docs/17/protocol-error-fields.html
     pub code: Byte,
     // The actual message
-    pub message: CString,
-}
-
-impl ErrorMessage {
-    pub fn new(code: char, message: &String) -> anyhow::Result<Self> {
-        Ok(Self {
-            code: code as u8,
-            message: CString::new(&message[..])?,
-        })
-    }
+    pub message: String,
 }
 
 // Execute (F)
@@ -775,17 +746,8 @@ pub struct NoticeResponse {
 #[derive(Debug, Clone, PartialEq, SerdeLibpqData, MessageBody, TryFromRawMessage)]
 #[message_body(kind = 'S')]
 pub struct ParameterStatus {
-    pub name: CString,
-    pub value: CString,
-}
-
-impl ParameterStatus {
-    pub fn new(name: &String, value: &String) -> anyhow::Result<Self> {
-        Ok(Self {
-            name: CString::new(&name[..])?,
-            value: CString::new(&value[..])?,
-        })
-    }
+    pub name: String,
+    pub value: String,
 }
 
 // Parse (F)
@@ -815,16 +777,10 @@ impl ParameterStatus {
 #[derive(Debug, PartialEq, SerdeLibpqData, MessageBody, TryFromRawMessage)]
 #[message_body(kind = 'p')]
 pub struct PasswordMessage {
-    pub password: CString,
+    pub password: String,
 }
 
 impl PasswordMessage {
-    pub fn new(password: &String) -> anyhow::Result<Self> {
-        Ok(Self {
-            password: CString::new(&password[..])?,
-        })
-    }
-
     pub fn new_from_user_password(
         user: &String,
         password: &String,
@@ -840,7 +796,7 @@ impl PasswordMessage {
         let hash = md5.finalize();
         let md5 = format!("md5{hash:x}");
 
-        Self::new(&md5)
+        Ok(Self { password: md5 })
     }
 }
 
@@ -856,15 +812,7 @@ impl PasswordMessage {
 #[derive(Debug, PartialEq, SerdeLibpqData, MessageBody, TryFromRawMessage)]
 #[message_body(kind = 'Q')]
 pub struct Query {
-    pub query: CString,
-}
-
-impl Query {
-    pub fn new(query: String) -> anyhow::Result<Self> {
-        Ok(Self {
-            query: CString::new(&query[..])?,
-        })
-    }
+    pub query: String,
 }
 
 // ReadyForQuery (B)
@@ -950,7 +898,7 @@ impl RowDescription {
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct QColumnDescription {
-    pub name: CString,
+    pub name: String,
     pub relation_id: i32,
     pub attribute_id: i16,
     pub datatype_id: i32,
@@ -962,7 +910,7 @@ pub struct QColumnDescription {
 impl QColumnDescription {
     pub fn new(name: &String, pgtype: PgType) -> anyhow::Result<Self> {
         Ok(Self {
-            name: CString::new(&name[..])?,
+            name: name.clone(),
             relation_id: 0,
             attribute_id: 0,
             datatype_id: i32::from(&pgtype),
@@ -1106,10 +1054,7 @@ impl TryFrom<&StartupMessage> for HashMap<String, String> {
     fn try_from(startup_message: &StartupMessage) -> anyhow::Result<HashMap<String, String>> {
         let mut hashmap: HashMap<String, String> = HashMap::new();
         for parameter in &startup_message.parameters {
-            hashmap.insert(
-                parameter.name.clone().into_string()?,
-                parameter.value.clone().into_string()?,
-            );
+            hashmap.insert(parameter.name.clone(), parameter.value.clone());
         }
         Ok(hashmap)
     }
@@ -1137,7 +1082,6 @@ pub struct Terminate {}
 mod test {
     use super::*;
     use crate::message::MessageHeader;
-    use crate::message::logical_message::ColumnData;
     use bytes::{Bytes, BytesMut};
     use libpq_serde_types::{ByteSized, Serialize};
 
@@ -1151,8 +1095,8 @@ mod test {
         };
 
         let mut buffer = BytesMut::new();
-        h.serialize(&mut buffer);
-        m.serialize(&mut buffer);
+        h.serialize(&mut buffer)?;
+        m.serialize(&mut buffer)?;
 
         let e = vec![0x52, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00];
 
@@ -1185,8 +1129,10 @@ mod test {
         // 0x0050:                      4400 0000 0a00 0100  ........D.......
         // 0x0060:  0000 00
 
-        //FIXME: I should use ColumnData
-        let m = DataRow::new(Vec::<ColumnData>::from([Some(VecWithEncoding::new())]));
+        let mut m = DataRow {
+            columns: VecWithEncoding::<Option<Bytes>, Length16>::new(),
+        };
+        m.columns.push(Some(Bytes::new()));
         let h = MessageHeader {
             message_type: 'D' as u8,
             length: 4 + m.byte_size(),
@@ -1211,10 +1157,10 @@ mod test {
         // 0x0060:  0000 00
 
         //FIXME: I should use ColumnData
-        let col_data = Vec::<Byte>::from(['1' as u8]);
-        let m = DataRow::new(Vec::<ColumnData>::from([Some(VecWithEncoding::from(
-            col_data,
-        ))]));
+        let mut m = DataRow {
+            columns: VecWithEncoding::<Option<Bytes>, Length16>::new(),
+        };
+        m.columns.push(Some(Bytes::from(vec!['1' as u8])));
         let h = MessageHeader {
             message_type: 'D' as u8,
             length: 4 + m.byte_size(),

@@ -62,7 +62,7 @@ impl TryFrom<&QColumnDescription> for QColDesc {
     type Error = anyhow::Error;
     fn try_from(value: &QColumnDescription) -> anyhow::Result<QColDesc> {
         Ok(Self {
-            name: value.name.clone().into_string()?,
+            name: value.name.clone(),
             pg_type: PgType::try_from(value.datatype_id)?,
         })
     }
@@ -72,7 +72,7 @@ impl TryFrom<QColumnDescription> for QColDesc {
     type Error = anyhow::Error;
     fn try_from(value: QColumnDescription) -> anyhow::Result<QColDesc> {
         Ok(Self {
-            name: value.name.into_string()?,
+            name: value.name,
             pg_type: PgType::try_from(value.datatype_id)?,
         })
     }
@@ -122,8 +122,8 @@ pub struct CBRelation {
 impl TryFrom<&Relation> for CBRelation {
     type Error = anyhow::Error;
     fn try_from(value: &Relation) -> anyhow::Result<CBRelation> {
-        let relation: String = value.relname.clone().into_string()?;
-        let schema: String = value.namespace.clone().into_string()?;
+        let relation: String = value.relname.clone();
+        let schema: String = value.namespace.clone();
         let mut columns = Vec::<CBColDesc>::new();
 
         for col in value.columns.iter() {
@@ -141,8 +141,8 @@ impl TryFrom<&Relation> for CBRelation {
 impl TryFrom<Relation> for CBRelation {
     type Error = anyhow::Error;
     fn try_from(value: Relation) -> anyhow::Result<CBRelation> {
-        let relation: String = value.relname.into_string()?;
-        let schema: String = value.namespace.into_string()?;
+        let relation: String = value.relname;
+        let schema: String = value.namespace;
         let mut columns = Vec::<CBColDesc>::new();
 
         for col in value.columns.into_iter() {
@@ -168,7 +168,7 @@ impl TryFrom<&RColumnDescription> for CBColDesc {
     fn try_from(value: &RColumnDescription) -> anyhow::Result<CBColDesc> {
         //FIXME: have standart name for things like type_oid
         Ok(Self {
-            name: value.name.clone().into_string()?,
+            name: value.name.clone(),
             pg_type: PgType::try_from(value.type_oid)?,
         })
     }
@@ -178,7 +178,7 @@ impl TryFrom<RColumnDescription> for CBColDesc {
     type Error = anyhow::Error;
     fn try_from(value: RColumnDescription) -> anyhow::Result<CBColDesc> {
         Ok(Self {
-            name: value.name.into_string()?,
+            name: value.name,
             pg_type: PgType::try_from(value.type_oid)?,
         })
     }
@@ -224,18 +224,30 @@ impl ClientMachine {
             MessageBuilder::new_frontend_message().startup_message(StartupMessage {
                 protocol_version: ProtocolVersion { major: 3, minor: 0 },
                 parameters: VecWithEncoding::<ParameterStatus, NullLength>::from(vec![
-                    ParameterStatus::new(&(String::from("user")), &user)?,
-                    ParameterStatus::new(&(String::from("database")), &database)?,
-                    ParameterStatus::new(&(String::from("application_name")), &application_name)?,
-                    ParameterStatus::new(&(String::from("replication")), &replication)?,
-                    ParameterStatus::new(
-                        &(String::from("client_encoding")),
-                        &(String::from("utf8")),
-                    )?,
+                    ParameterStatus {
+                        name: String::from("user"),
+                        value: user.clone(),
+                    },
+                    ParameterStatus {
+                        name: String::from("database"),
+                        value: database.clone(),
+                    },
+                    ParameterStatus {
+                        name: String::from("application_name"),
+                        value: application_name.clone(),
+                    },
+                    ParameterStatus {
+                        name: String::from("replication"),
+                        value: replication.clone(),
+                    },
+                    ParameterStatus {
+                        name: String::from("client_encoding"),
+                        value: String::from("utf8"),
+                    },
                 ]),
             });
         let client_parameters = HashMap::<String, String>::try_from(startup_message.main_as_ref())?;
-        startup_message.into_raw_message().send(&mut tcp_stream)?;
+        startup_message.into_raw_message()?.send(&mut tcp_stream)?;
 
         Ok(Self {
             last_message_kind: None,
@@ -276,7 +288,7 @@ impl ClientMachine {
                         &self.password,
                         &message.salt,
                     )?)
-                    .into_raw_message()
+                    .into_raw_message()?
                     .send(&mut self.tcp_stream)?;
             }
 
@@ -321,8 +333,8 @@ impl ClientMachine {
                     Some(query) => {
                         info!("Query: {}", query);
                         MessageBuilder::new_frontend_message()
-                            .query(Query::new(query.clone())?)
-                            .into_raw_message()
+                            .query(Query { query: query.clone() })
+                            .into_raw_message()?
                             .send(&mut self.tcp_stream)?;
                         self.context = Context::QTextSubmitted(query);
                     }
@@ -534,11 +546,9 @@ impl ClientMachine {
                 debug!("DETAIL: {message:?}");
                 warn!(
                     "Server parameters: '{}' = '{}'",
-                    message.name.to_string_lossy(),
-                    message.value.to_string_lossy()
+                    message.name, message.value
                 );
-                self.server_parameters
-                    .insert(message.name.into_string()?, message.value.into_string()?);
+                self.server_parameters.insert(message.name, message.value);
             }
 
             // In Authentication context, ErrorResponse is followed by a deconnection
@@ -966,30 +976,9 @@ fn format_err_msg(messages: &VecWithEncoding<ErrorMessage, NullLength>) -> Strin
     let mut txt: Option<String> = None;
     for msg in messages.iter() {
         match msg.code {
-            83 => {
-                mtype = Some(
-                    msg.message
-                        .clone()
-                        .into_string()
-                        .expect("The message type should be a valid string"),
-                )
-            }
-            67 => {
-                code = Some(
-                    msg.message
-                        .clone()
-                        .into_string()
-                        .expect("The message code should be a valid string"),
-                )
-            }
-            77 => {
-                txt = Some(
-                    msg.message
-                        .clone()
-                        .into_string()
-                        .expect("The message text should be a valid string"),
-                )
-            }
+            83 => mtype = Some(msg.message.clone()),
+            67 => code = Some(msg.message.clone()),
+            77 => txt = Some(msg.message.clone()),
             _ => (),
         }
     }

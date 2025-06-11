@@ -153,35 +153,35 @@ impl<F> MessageBuilder<F, NoType, NotStreaming, NotLogical> {
 
 // --- StartupMessage
 impl MessageBuilder<Frontend, StartupMessage, NotStreaming, NotLogical> {
-    pub fn into_raw_message(self) -> RawMessage<RequestType> {
+    pub fn into_raw_message(self) -> anyhow::Result<RawMessage<RequestType>> {
         let mut buffer_body = BytesMut::new();
-        self.main.serialize(&mut buffer_body);
+        self.main.serialize(&mut buffer_body)?;
 
         let mut buffer_header = BytesMut::new();
         RequestHeader {
             length: (buffer_body.len() + 4) as i32,
         }
-        .serialize(&mut buffer_header);
+        .serialize(&mut buffer_header)?;
 
-        RawMessage {
+        Ok(RawMessage {
             from: MsgOrigin::Frontend,
             mtype: RequestType::StartupMessage,
             header: buffer_header.into(),
             body: buffer_body.into(),
-        }
+        })
     }
 }
 
 // --- PasswordMessage
 impl MessageBuilder<Frontend, PasswordMessage, NotStreaming, NotLogical> {
-    pub fn into_raw_message(self) -> RawMessage<MessageType> {
+    pub fn into_raw_message(self) -> anyhow::Result<RawMessage<MessageType>> {
         self.build_libpq_message(MsgOrigin::Frontend, None)
     }
 }
 
 // --- Query
 impl MessageBuilder<Frontend, Query, NotStreaming, NotLogical> {
-    pub fn into_raw_message(self) -> RawMessage<MessageType> {
+    pub fn into_raw_message(self) -> anyhow::Result<RawMessage<MessageType>> {
         self.build_libpq_message(MsgOrigin::Frontend, None)
     }
 }
@@ -202,7 +202,7 @@ where
 
 // --- AuthenticationMd5
 impl MessageBuilder<Backend, AuthenticationMD5Password, NotStreaming, NotLogical> {
-    pub fn into_raw_message(self) -> RawMessage<MessageType> {
+    pub fn into_raw_message(self) -> anyhow::Result<RawMessage<MessageType>> {
         self.build_libpq_message(
             MsgOrigin::Backend,
             Some(i32::from(&AuthenticationMessageKind::MD5Password)),
@@ -253,14 +253,14 @@ impl MessageBuilder<Frontend, CopyData, NotStreaming, NotLogical> {
 
 // --- PrimaryKeepAlive
 impl MessageBuilder<Backend, CopyData, PrimaryKeepAliveMessage, NotLogical> {
-    pub fn into_raw_message(self) -> RawMessage<MessageType> {
+    pub fn into_raw_message(self) -> anyhow::Result<RawMessage<MessageType>> {
         self.build_streaming_message(MsgOrigin::Backend)
     }
 }
 
 // --- StandbyStatusUpdate
 impl MessageBuilder<Frontend, CopyData, StandbyStatusUpdate, NotLogical> {
-    pub fn into_raw_message(self) -> RawMessage<MessageType> {
+    pub fn into_raw_message(self) -> anyhow::Result<RawMessage<MessageType>> {
         self.build_streaming_message(MsgOrigin::Frontend)
     }
 }
@@ -327,42 +327,42 @@ impl MessageBuilder<Backend, CopyData, XLogData, NotLogical> {
 
 // --- Insert
 impl MessageBuilder<Backend, CopyData, XLogData, Insert> {
-    pub fn into_raw_message(self) -> RawMessage<MessageType> {
+    pub fn into_raw_message(self) -> anyhow::Result<RawMessage<MessageType>> {
         self.build_logical_message(MsgOrigin::Backend)
     }
 }
 
 // --- Update
 impl MessageBuilder<Backend, CopyData, XLogData, Update> {
-    pub fn into_raw_message(self) -> RawMessage<MessageType> {
+    pub fn into_raw_message(self) -> anyhow::Result<RawMessage<MessageType>> {
         self.build_logical_message(MsgOrigin::Backend)
     }
 }
 
 // --- Delete
 impl MessageBuilder<Backend, CopyData, XLogData, Delete> {
-    pub fn into_raw_message(self) -> RawMessage<MessageType> {
+    pub fn into_raw_message(self) -> anyhow::Result<RawMessage<MessageType>> {
         self.build_logical_message(MsgOrigin::Backend)
     }
 }
 
 // --- Truncate
 impl MessageBuilder<Backend, CopyData, XLogData, Truncate> {
-    pub fn into_raw_message(self) -> RawMessage<MessageType> {
+    pub fn into_raw_message(self) -> anyhow::Result<RawMessage<MessageType>> {
         self.build_logical_message(MsgOrigin::Backend)
     }
 }
 
 // --- Begin
 impl MessageBuilder<Backend, CopyData, XLogData, Begin> {
-    pub fn into_raw_message(self) -> RawMessage<MessageType> {
+    pub fn into_raw_message(self) -> anyhow::Result<RawMessage<MessageType>> {
         self.build_logical_message(MsgOrigin::Backend)
     }
 }
 
 // --- Commit
 impl MessageBuilder<Backend, CopyData, XLogData, Commit> {
-    pub fn into_raw_message(self) -> RawMessage<MessageType> {
+    pub fn into_raw_message(self) -> anyhow::Result<RawMessage<MessageType>> {
         self.build_logical_message(MsgOrigin::Backend)
     }
 }
@@ -378,21 +378,21 @@ where
     L: Serialize + MessageBody,
 {
     //FIXME: the type constraint are a little lax maybe add a logical and streaming trait
-    fn build_logical_message(self, from: MsgOrigin) -> RawMessage<MessageType> {
+    fn build_logical_message(self, from: MsgOrigin) -> anyhow::Result<RawMessage<MessageType>> {
         // Reconstruct the streaming message
         let mut buffer_body = BytesMut::new();
         StreamingHeader {
             message_type: self.streaming.message_type() as i8,
         }
-        .serialize(&mut buffer_body);
-        self.streaming.serialize(&mut buffer_body);
+        .serialize(&mut buffer_body)?;
+        self.streaming.serialize(&mut buffer_body)?;
 
         // Reconstruct the logical message
         LogicalHeader {
             message_type: self.logical.message_type() as i8,
         }
-        .serialize(&mut buffer_body);
-        self.logical.serialize(&mut buffer_body);
+        .serialize(&mut buffer_body)?;
+        self.logical.serialize(&mut buffer_body)?;
 
         // Reconstruct CopyData message
         let mut buffer_header = BytesMut::new();
@@ -400,19 +400,19 @@ where
             message_type: self.main.message_type(),
             length: buffer_body.len() as i32 + 4,
         }
-        .serialize(&mut buffer_header);
+        .serialize(&mut buffer_header)?;
 
         let mtype = MessageType {
             main: self.main.message_type(),
             auth: None,
         };
 
-        RawMessage {
+        Ok(RawMessage {
             from,
             mtype,
             header: buffer_header.into(),
             body: buffer_body.into(),
-        }
+        })
     }
 }
 
@@ -422,15 +422,15 @@ where
     S: Serialize + MessageBody,
 {
     //FIXME: the type constraint are a little lax maybe add a streaming trait
-    fn build_streaming_message(self, from: MsgOrigin) -> RawMessage<MessageType> {
+    fn build_streaming_message(self, from: MsgOrigin) -> anyhow::Result<RawMessage<MessageType>> {
         let mut buffer_body = BytesMut::new();
 
         // Reconstruct the streaming message
         StreamingHeader {
             message_type: self.streaming.message_type() as i8,
         }
-        .serialize(&mut buffer_body);
-        self.streaming.serialize(&mut buffer_body);
+        .serialize(&mut buffer_body)?;
+        self.streaming.serialize(&mut buffer_body)?;
 
         // Reconstruct CopyData message
         let mut buffer_header = BytesMut::new();
@@ -438,19 +438,19 @@ where
             message_type: self.main.message_type(),
             length: buffer_body.len() as i32 + 4,
         }
-        .serialize(&mut buffer_header);
+        .serialize(&mut buffer_header)?;
 
         let mtype = MessageType {
             main: self.main.message_type(),
             auth: None,
         };
 
-        RawMessage {
+        Ok(RawMessage {
             from,
             mtype,
             header: buffer_header.into(),
             body: buffer_body.into(),
-        }
+        })
     }
 }
 
@@ -459,29 +459,33 @@ where
     M: Serialize + MessageBody,
 {
     //FIXME: the type constraint are a little lax maybe add a streaming trait
-    fn build_libpq_message(self, from: MsgOrigin, auth: Option<i32>) -> RawMessage<MessageType> {
+    fn build_libpq_message(
+        self,
+        from: MsgOrigin,
+        auth: Option<i32>,
+    ) -> anyhow::Result<RawMessage<MessageType>> {
         let mut buffer_body = BytesMut::new();
 
         // Reconstruct CopyData message
-        self.main.serialize(&mut buffer_body);
+        self.main.serialize(&mut buffer_body)?;
 
         let mut buffer_header = BytesMut::new();
         MessageHeader {
             message_type: self.main.message_type(),
             length: buffer_body.len() as i32 + 4,
         }
-        .serialize(&mut buffer_header);
+        .serialize(&mut buffer_header)?;
 
         let mtype = MessageType {
             main: self.main.message_type(),
             auth,
         };
 
-        RawMessage {
+        Ok(RawMessage {
             from,
             mtype,
             header: buffer_header.into(),
             body: buffer_body.into(),
-        }
+        })
     }
 }

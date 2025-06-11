@@ -100,8 +100,8 @@ pub struct CBRelation {
 impl TryFrom<&Relation> for CBRelation {
     type Error = anyhow::Error;
     fn try_from(value: &Relation) -> anyhow::Result<CBRelation> {
-        let relation: String = value.relname.clone().into_string()?;
-        let schema: String = value.namespace.clone().into_string()?;
+        let relation: String = value.relname.clone();
+        let schema: String = value.namespace.clone();
         let mut columns = Vec::<CBColDesc>::new();
 
         for col in value.columns.iter() {
@@ -119,8 +119,8 @@ impl TryFrom<&Relation> for CBRelation {
 impl TryFrom<Relation> for CBRelation {
     type Error = anyhow::Error;
     fn try_from(value: Relation) -> anyhow::Result<CBRelation> {
-        let relation: String = value.relname.into_string()?;
-        let schema: String = value.namespace.into_string()?;
+        let relation: String = value.relname;
+        let schema: String = value.namespace;
         let mut columns = Vec::<CBColDesc>::new();
 
         for col in value.columns.into_iter() {
@@ -146,7 +146,7 @@ impl TryFrom<&RColumnDescription> for CBColDesc {
     fn try_from(value: &RColumnDescription) -> anyhow::Result<CBColDesc> {
         //FIXME: have standart name for things like type_oid
         Ok(Self {
-            name: value.name.clone().into_string()?,
+            name: value.name.clone(),
             pg_type: PgType::try_from(value.type_oid)?,
         })
     }
@@ -156,7 +156,7 @@ impl TryFrom<RColumnDescription> for CBColDesc {
     type Error = anyhow::Error;
     fn try_from(value: RColumnDescription) -> anyhow::Result<CBColDesc> {
         Ok(Self {
-            name: value.name.into_string()?,
+            name: value.name,
             pg_type: PgType::try_from(value.type_oid)?,
         })
     }
@@ -321,7 +321,7 @@ impl PassThruMachine {
                 Context::ReadyForQuery,
             ) => {
                 let msg = Query::try_from(&mut raw_message.clone())?;
-                let query = msg.query.into_string()?;
+                let query = msg.query;
                 debug!("DETAIL: query: {:}", query);
                 self.context = Context::QTextSubmitted(query);
                 raw_message.send(&mut self.be_stream)?;
@@ -506,8 +506,7 @@ impl PassThruMachine {
             (Some(_), Message::Backend(BackendMessageKind::ParameterStatus), _) => {
                 let message = ParameterStatus::try_from(&mut raw_message.clone())?;
                 debug!("DETAIL: {message:?}");
-                self.server_parameters
-                    .insert(message.name.into_string()?, message.value.into_string()?);
+                self.server_parameters.insert(message.name, message.value);
                 raw_message.send(&mut self.fe_stream)?;
                 // No state change
             }
@@ -649,9 +648,9 @@ impl PassThruMachine {
                             debug!("DETAIL: {:?}", message,);
                             for (idx, col) in message.columns.iter().enumerate() {
                                 match self.anonymize_order.get(&(
-                                    message.namespace.clone().into_string()?,
-                                    message.relname.clone().into_string()?,
-                                    col.name.clone().into_string()?,
+                                    message.namespace.clone(),
+                                    message.relname.clone(),
+                                    col.name.clone(),
                                 )) {
                                     Some(f) => {
                                         self.anonymize_what
@@ -687,7 +686,7 @@ impl PassThruMachine {
                                         .copy_data()
                                         .xlog_data(xlog_data_body)
                                         .insert(insert_message)
-                                        .into_raw_message()
+                                        .into_raw_message()?
                                         .send(&mut self.fe_stream)?;
 
                                     return Ok(false);
@@ -728,7 +727,7 @@ impl PassThruMachine {
                                         .copy_data()
                                         .xlog_data(xlog_data_body)
                                         .update(update_message)
-                                        .into_raw_message()
+                                        .into_raw_message()?
                                         .send(&mut self.fe_stream)?;
 
                                     return Ok(false);
@@ -759,7 +758,7 @@ impl PassThruMachine {
                                         .copy_data()
                                         .xlog_data(xlog_data_body)
                                         .delete(delete_message)
-                                        .into_raw_message()
+                                        .into_raw_message()?
                                         .send(&mut self.fe_stream)?;
 
                                     return Ok(false);

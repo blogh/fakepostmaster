@@ -1,6 +1,5 @@
 use anyhow::anyhow;
 use bytes::Bytes;
-use std::ffi::CString;
 
 use libpq_serde_macros::{MessageBody, SerdeLibpqData};
 use libpq_serde_types::{
@@ -137,7 +136,7 @@ pub struct Message {
     //pub txn_id: i32,
     pub is_txn: i8,
     pub lsn: i64,
-    pub prefix: CString,
+    pub prefix: String,
     pub message: VecWithEncoding<Byte, Length32>,
 }
 
@@ -166,7 +165,7 @@ pub struct Commit {
 #[message_body(kind = 'O')]
 pub struct Origin {
     pub commit_lsn_orig: i64,
-    pub orig_name: CString,
+    pub orig_name: String,
 }
 
 // Relation
@@ -191,8 +190,8 @@ pub struct Relation {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
     pub rel_oid: i32,
-    pub namespace: CString,
-    pub relname: CString,
+    pub namespace: String,
+    pub relname: String,
     pub replica_identity: i8,
     pub columns: VecWithEncoding<RColumnDescription, Length16>,
 }
@@ -200,7 +199,7 @@ pub struct Relation {
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct RColumnDescription {
     pub flag: i8,
-    pub name: CString,
+    pub name: String,
     pub type_oid: i32,
     pub typemod: i32,
 }
@@ -218,8 +217,8 @@ pub struct Type {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
     pub type_oid: i32,
-    pub namespace: CString,
-    pub type_name: CString,
+    pub namespace: String,
+    pub type_name: String,
 }
 
 // Insert
@@ -452,13 +451,14 @@ impl libpq_serde_types::ByteSized for ColumnData {
 }
 
 impl libpq_serde_types::Serialize for ColumnData {
-    fn serialize(&self, buffer: &mut bytes::BytesMut) {
-        self.flag.serialize(buffer);
+    fn serialize(&self, buffer: &mut bytes::BytesMut) -> anyhow::Result<()> {
+        self.flag.serialize(buffer)?;
         match self.flag as char {
             'n' | 'u' => (),
-            't' | 'b' => self.column_value.serialize(buffer),
+            't' | 'b' => self.column_value.serialize(buffer)?,
             _ => unreachable!("Invalid value for ColumndData flag: {}", self.flag as char),
-        }
+        };
+        Ok(())
     }
 }
 
@@ -499,16 +499,17 @@ impl libpq_serde_types::ByteSized for ReplicaIdentity {
 }
 
 impl libpq_serde_types::Serialize for ReplicaIdentity {
-    fn serialize(&self, buffer: &mut bytes::BytesMut) {
+    fn serialize(&self, buffer: &mut bytes::BytesMut) -> anyhow::Result<()> {
         match &self {
             &ReplicaIdentity::Old(t) => {
-                t.serialize(buffer);
+                t.serialize(buffer)?;
             }
             &ReplicaIdentity::Key(t) => {
-                t.serialize(buffer);
+                t.serialize(buffer)?;
             }
             &ReplicaIdentity::None => (),
-        }
+        };
+        Ok(())
     }
 }
 

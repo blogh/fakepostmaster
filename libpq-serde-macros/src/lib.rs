@@ -1,7 +1,7 @@
 use proc_macro;
 use proc_macro2;
 use quote::quote;
-use syn::{DeriveInput, Type};
+use syn::DeriveInput;
 
 // Derive macro are executed at compile time and can generate code
 // base on a token stream which is produced from the code.
@@ -106,7 +106,7 @@ fn serde_libpq_data_derive_macro2(
             //    }
             //}
 
-            fields_serialize.push(quote! { self.#field_name.serialize(buffer); });
+            fields_serialize.push(quote! { self.#field_name.serialize(buffer)?; });
             prepare_deserialize
                 .push(quote! { let #field_name = <#field_type>::deserialize(buffer)?; });
             fields_deserialize.push(quote! { #field_name, });
@@ -121,8 +121,9 @@ fn serde_libpq_data_derive_macro2(
             }
 
             impl libpq_serde_types::Serialize for #ident {
-                fn serialize(&self, buffer: &mut bytes::BytesMut) {
+                fn serialize(&self, buffer: &mut bytes::BytesMut) -> anyhow::Result<()> {
                     #(#fields_serialize)*
+                    Ok(())
                 }
             }
 
