@@ -5,76 +5,963 @@
 mod tests {
     use bytes::{Bytes, BytesMut};
     use libpq_serde_macros::SerdeLibpqData;
-    use libpq_serde_types::libpq_types::{Byte, Byte4, Length16, Length32, VecWithEncoding};
     use libpq_serde_types::{ByteSized, Deserialize, Serialize};
 
-    #[derive(Debug, PartialEq, SerdeLibpqData)]
-    struct AllTypes {
-        byte: Byte,
-        byte4: Byte4,
-        int_16: i16,
-        int_32: i32,
-        cstring: String,
-        vec16_string: VecWithEncoding<String, Length16>,
-        vec32_bytes: VecWithEncoding<Byte, Length32>,
-    }
-
-    fn example_struct() -> AllTypes {
-        AllTypes {
-            byte: 0x01,
-            byte4: [0x00, 0x00, 0x00, 0x00],
-            int_16: 125,
-            int_32: 521,
-            cstring: String::from("aldabis"),
-            vec16_string: vec![String::from("aldabis"), String::from("aldabis")].into(),
-            vec32_bytes: vec![0x01, 0x02].into(),
+    //*------------------------------------------------------------------------
+    // Macro serde: implementation of Serialize
+    //*------------------------------------------------------------------------
+    #[test]
+    fn macro_serde_serialize_vec_i16_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            vec16: Vec<i32>,
         }
-    }
 
-    fn example_from_serialize() -> anyhow::Result<BytesMut> {
-        let mut m = BytesMut::new();
-
-        (1 as Byte).serialize(&mut m)?;
-        ([0x00, 0x00, 0x00, 0x00] as Byte4).serialize(&mut m)?;
-        125i16.serialize(&mut m)?;
-        521i32.serialize(&mut m)?;
-        String::from("aldabis").serialize(&mut m)?;
-        VecWithEncoding::<String, Length16>::from(vec![
-            String::from("aldabis"),
-            String::from("aldabis"),
-        ])
-        .serialize(&mut m)?;
-        VecWithEncoding::<Byte, Length32>::from(vec![0x01, 0x02]).serialize(&mut m)?;
-
-        Ok(m)
-    }
-
-    #[test]
-    fn derive_macro_serialize_struct() -> anyhow::Result<()> {
-        let s = example_struct();
-
-        let mut m = Bytes::from(example_from_serialize()?);
-        assert_eq!(s, <AllTypes>::deserialize(&mut m)?);
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding { vec16: vec![] }.serialize(&mut buffer)?;
+        assert_eq!(vec![0_u8, 0], buffer.to_vec());
 
         Ok(())
     }
 
     #[test]
-    fn derive_macro_deserialize_struct() -> anyhow::Result<()> {
-        let b = example_struct();
-        let m = example_from_serialize()?;
+    fn macro_serde_serialize_vec_i16_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            vec16: Vec<i32>,
+        }
 
-        assert_eq!(b.byte_size(), m.len() as i32);
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding {
+            vec16: vec![0, 1, 2],
+        }
+        .serialize(&mut buffer)?;
+        assert_eq!(
+            vec![0_u8, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2],
+            buffer.to_vec()
+        );
 
         Ok(())
     }
 
     #[test]
-    fn derive_macro_bytesize_struct() -> anyhow::Result<()> {
-        let b = example_struct();
-        let m = example_from_serialize()?;
+    fn macro_serde_serialize_vec_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            vec32: Vec<i32>,
+        }
 
-        assert_eq!(b.byte_size(), m.len() as i32);
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding { vec32: vec![] }.serialize(&mut buffer)?;
+        assert_eq!(vec![0_u8, 0, 0, 0], buffer.to_vec());
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_vec_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            vec32: Vec<i32>,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding {
+            vec32: vec![0, 1, 2],
+        }
+        .serialize(&mut buffer)?;
+        assert_eq!(
+            vec![0_u8, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2],
+            buffer.to_vec()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_vec_null_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "null")]
+            vecnull: Vec<String>,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding {
+            vecnull: Vec::new(),
+        }
+        .serialize(&mut buffer)?;
+        assert_eq!(vec![0], buffer.to_vec());
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_vec_null_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "null")]
+            vecnull: Vec<String>,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding {
+            vecnull: vec!["un".into(), "deux".into(), "trois".into()],
+        }
+        .serialize(&mut buffer)?;
+        assert_eq!(
+            vec![
+                117, 110, 0, 100, 101, 117, 120, 0, 116, 114, 111, 105, 115, 0, 0
+            ],
+            buffer.to_vec()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_bytes_i16_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            bytes16: Bytes,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding {
+            bytes16: Bytes::from(vec![]),
+        }
+        .serialize(&mut buffer)?;
+        assert_eq!(vec![0_u8, 0], buffer.to_vec());
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_bytes_i16_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            bytes16: Bytes,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding {
+            bytes16: Bytes::from(vec![1_u8, 2, 3, 4]),
+        }
+        .serialize(&mut buffer)?;
+        assert_eq!(vec![0_u8, 4, 1, 2, 3, 4], buffer.to_vec());
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_bytes_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            bytes32: Bytes,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding {
+            bytes32: Bytes::from(vec![]),
+        }
+        .serialize(&mut buffer)?;
+        assert_eq!(vec![0_u8, 0, 0, 0], buffer.to_vec());
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_bytes_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            bytes32: Bytes,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding {
+            bytes32: Bytes::from(vec![1_u8, 2, 3, 4]),
+        }
+        .serialize(&mut buffer)?;
+        assert_eq!(vec![0_u8, 0, 0, 4, 1, 2, 3, 4], buffer.to_vec());
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_opt_vec16_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            opt_vec16: Option<Vec<i32>>,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding { opt_vec16: None }.serialize(&mut buffer)?;
+        assert_eq!(vec![0xFF, 0xFF], buffer.to_vec());
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_opt_vec16_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            opt_vec16: Option<Vec<i32>>,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding {
+            opt_vec16: Some(vec![0, 1, 2]),
+        }
+        .serialize(&mut buffer)?;
+        assert_eq!(
+            vec![0_u8, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2],
+            buffer.to_vec()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_opt_vec32_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            opt_vec32: Option<Vec<i32>>,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding { opt_vec32: None }.serialize(&mut buffer)?;
+        assert_eq!(vec![0xFF, 0xFF, 0xFF, 0xFF], buffer.to_vec());
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_opt_vec32_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            opt_vec32: Option<Vec<i32>>,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding {
+            opt_vec32: Some(vec![0, 1, 2]),
+        }
+        .serialize(&mut buffer)?;
+        assert_eq!(
+            vec![0_u8, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2],
+            buffer.to_vec()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_opt_bytes_i16_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            opt_bytes16: Option<Bytes>,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding { opt_bytes16: None }.serialize(&mut buffer)?;
+        assert_eq!(vec![0xFF, 0xFF], buffer.to_vec());
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_opt_bytes_i16_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            opt_bytes16: Option<Bytes>,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding {
+            opt_bytes16: Some(Bytes::from(vec![1_u8, 2, 3, 4])),
+        }
+        .serialize(&mut buffer)?;
+        assert_eq!(vec![0_u8, 4, 1, 2, 3, 4], buffer.to_vec());
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_opt_bytes_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            opt_bytes32: Option<Bytes>,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding { opt_bytes32: None }.serialize(&mut buffer)?;
+        assert_eq!(vec![0xFF, 0xFF, 0xFF, 0xFF], buffer.to_vec());
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_serialize_opt_bytes_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            opt_bytes32: Option<Bytes>,
+        }
+
+        let mut buffer = BytesMut::new();
+        TestLengthEncoding {
+            opt_bytes32: Some(Bytes::from(vec![1_u8, 2, 3, 4])),
+        }
+        .serialize(&mut buffer)?;
+        assert_eq!(vec![0_u8, 0, 0, 4, 1, 2, 3, 4], buffer.to_vec());
+
+        Ok(())
+    }
+    //*------------------------------------------------------------------------
+    // Macro serde: implementation of Deserialize
+    //*------------------------------------------------------------------------
+    #[test]
+    fn macro_serde_deserialize_vec_i16_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            vec16: Vec<i32>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[0_u8, 0]))?,
+            TestLengthEncoding { vec16: vec![] }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_vec_i16_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            vec16: Vec<i32>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[
+                0_u8, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2
+            ]))?,
+            TestLengthEncoding {
+                vec16: vec![0, 1, 2],
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_vec_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            vec32: Vec<i32>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[0_u8, 0, 0, 0]))?,
+            TestLengthEncoding { vec32: vec![] }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_vec_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            vec32: Vec<i32>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[
+                0_u8, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2
+            ]))?,
+            TestLengthEncoding {
+                vec32: vec![0, 1, 2],
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_vec_null_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "null")]
+            vecnull: Vec<String>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[0]))?,
+            TestLengthEncoding {
+                vecnull: Vec::new(),
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_vec_null_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "null")]
+            vecnull: Vec<String>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[
+                117, 110, 0, 100, 101, 117, 120, 0, 116, 114, 111, 105, 115, 0, 0
+            ]))?,
+            TestLengthEncoding {
+                vecnull: vec!["un".into(), "deux".into(), "trois".into()],
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_bytes_i16_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            bytes16: Bytes,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[0_u8, 0]))?,
+            TestLengthEncoding {
+                bytes16: Bytes::from(vec![]),
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_bytes_i16_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            bytes16: Bytes,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[0_u8, 4, 1, 2, 3, 4]))?,
+            TestLengthEncoding {
+                bytes16: Bytes::from(vec![1_u8, 2, 3, 4]),
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_bytes_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            bytes32: Bytes,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[0_u8, 0, 0, 0]))?,
+            TestLengthEncoding {
+                bytes32: Bytes::from(vec![]),
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_bytes_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            bytes32: Bytes,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[0_u8, 0, 0, 4, 1, 2, 3, 4]))?,
+            TestLengthEncoding {
+                bytes32: Bytes::from(vec![1_u8, 2, 3, 4]),
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_opt_vec16_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            opt_vec16: Option<Vec<i32>>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[0xFF, 0xFF]))?,
+            TestLengthEncoding { opt_vec16: None }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_opt_vec16_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            opt_vec16: Option<Vec<i32>>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[
+                0_u8, 2, 0, 0, 0, 0, 0, 0, 0, 1
+            ]))?,
+            TestLengthEncoding {
+                opt_vec16: Some(vec![0, 1]),
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_opt_vec32_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            opt_vec32: Option<Vec<i32>>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[0xFF, 0xFF, 0xFF, 0xFF]))?,
+            TestLengthEncoding { opt_vec32: None }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_opt_vec32_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            opt_vec32: Option<Vec<i32>>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[
+                0_u8, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1
+            ]))?,
+            TestLengthEncoding {
+                opt_vec32: Some(vec![0, 1]),
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_opt_bytes_i16_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            opt_bytes16: Option<Bytes>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[0xFF, 0xFF]))?,
+            TestLengthEncoding { opt_bytes16: None }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_opt_bytes_i16_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            opt_bytes16: Option<Bytes>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[0_u8, 4, 1, 2, 3, 4]))?,
+            TestLengthEncoding {
+                opt_bytes16: Some(Bytes::from(vec![1_u8, 2, 3, 4])),
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_opt_bytes_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            opt_bytes32: Option<Bytes>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[0xFF, 0xFF, 0xFF, 0xFF]))?,
+            TestLengthEncoding { opt_bytes32: None }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_deserialize_opt_bytes_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            opt_bytes32: Option<Bytes>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding::deserialize(&mut Bytes::from_static(&[0_u8, 0, 0, 4, 1, 2, 3, 4]))?,
+            TestLengthEncoding {
+                opt_bytes32: Some(Bytes::from(vec![1_u8, 2, 3, 4])),
+            }
+        );
+
+        Ok(())
+    }
+
+    //*------------------------------------------------------------------------
+    // Macro serde: implementation of ByteSized
+    //*------------------------------------------------------------------------
+    #[test]
+    fn macro_serde_bytesized_vec_i16_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            vec16: Vec<i32>,
+        }
+
+        assert_eq!(TestLengthEncoding { vec16: vec![] }.byte_size(), 2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_vec_i16_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            vec16: Vec<i32>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding {
+                vec16: vec![0, 1, 2],
+            }
+            .byte_size(),
+            2 + 4 + 4 + 4
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_vec_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            vec32: Vec<i32>,
+        }
+
+        assert_eq!(TestLengthEncoding { vec32: vec![] }.byte_size(), 4);
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_vec_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            vec32: Vec<i32>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding {
+                vec32: vec![0, 1, 2],
+            }
+            .byte_size(),
+            4 + 4 + 4 + 4
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_vec_null_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "null")]
+            vecnull: Vec<String>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding {
+                vecnull: Vec::new(),
+            }
+            .byte_size(),
+            1
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_vec_null_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "null")]
+            vecnull: Vec<String>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding {
+                vecnull: vec!["un".into(), "deux".into(), "trois".into()],
+            }
+            .byte_size(),
+            3 + 5 + 6 + 1
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_bytes_i16_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            bytes16: Bytes,
+        }
+
+        assert_eq!(
+            TestLengthEncoding {
+                bytes16: Bytes::from(vec![]),
+            }
+            .byte_size(),
+            2
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_bytes_i16_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            bytes16: Bytes,
+        }
+
+        assert_eq!(
+            TestLengthEncoding {
+                bytes16: Bytes::from(vec![1, 2, 3, 4]),
+            }
+            .byte_size(),
+            2 + 4
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_bytes_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            bytes32: Bytes,
+        }
+
+        assert_eq!(
+            TestLengthEncoding {
+                bytes32: Bytes::from(vec![]),
+            }
+            .byte_size(),
+            4
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_bytes_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            bytes32: Bytes,
+        }
+
+        assert_eq!(
+            TestLengthEncoding {
+                bytes32: Bytes::from(vec![1_u8, 2, 3, 4]),
+            }
+            .byte_size(),
+            4 + 4
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_opt_vec16_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            opt_vec16: Option<Vec<i32>>,
+        }
+
+        assert_eq!(TestLengthEncoding { opt_vec16: None }.byte_size(), 2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_opt_vec16_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            opt_vec16: Option<Vec<i32>>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding {
+                opt_vec16: Some(vec![1, 2, 3]),
+            }
+            .byte_size(),
+            2 + 4 * 3
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_opt_vec32_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            opt_vec32: Option<Vec<i32>>,
+        }
+
+        assert_eq!(TestLengthEncoding { opt_vec32: None }.byte_size(), 4);
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_opt_vec32_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            opt_vec32: Option<Vec<i32>>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding {
+                opt_vec32: Some(vec![1, 2, 3]),
+            }
+            .byte_size(),
+            4 + 4 * 3
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_opt_bytes16_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            opt_bytes16: Option<Bytes>,
+        }
+
+        assert_eq!(TestLengthEncoding { opt_bytes16: None }.byte_size(), 2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_opt_bytes16_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i16")]
+            opt_bytes16: Option<Bytes>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding {
+                opt_bytes16: Some(Bytes::from(vec![1_u8, 2, 3])),
+            }
+            .byte_size(),
+            2 + 3
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_opt_bytes32_i32_empty() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            opt_bytes32: Option<Bytes>,
+        }
+
+        assert_eq!(TestLengthEncoding { opt_bytes32: None }.byte_size(), 4);
+
+        Ok(())
+    }
+
+    #[test]
+    fn macro_serde_bytesized_opt_bytes32_i32_with_data() -> anyhow::Result<()> {
+        #[derive(Debug, PartialEq, SerdeLibpqData)]
+        struct TestLengthEncoding {
+            #[serde_libpq(length_encoding = "i32")]
+            opt_bytes32: Option<Bytes>,
+        }
+
+        assert_eq!(
+            TestLengthEncoding {
+                opt_bytes32: Some(Bytes::from(vec![1_u8, 2, 3])),
+            }
+            .byte_size(),
+            4 + 3
+        );
 
         Ok(())
     }

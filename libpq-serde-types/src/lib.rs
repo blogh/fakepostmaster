@@ -1,4 +1,4 @@
-use bytes::{Buf, Bytes, BytesMut};
+use bytes::{Bytes, BytesMut};
 
 pub mod libpq_types;
 
@@ -20,8 +20,7 @@ pub trait Serialize {
 pub trait Deserialize {
     fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
     where
-        Self: Sized,
-        Bytes: Buf;
+        Self: Sized;
 }
 
 pub trait ByteSized {

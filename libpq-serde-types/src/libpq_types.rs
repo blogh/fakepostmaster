@@ -22,7 +22,6 @@ impl Deserialize for i8 {
     fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
     where
         Self: Sized,
-        Bytes: Buf,
     {
         buffer.try_get_i8().map_err(|e| e.into())
     }
@@ -46,7 +45,6 @@ impl Deserialize for i16 {
     fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
     where
         Self: Sized,
-        Bytes: Buf,
     {
         buffer.try_get_i16().map_err(|e| e.into())
     }
@@ -70,7 +68,6 @@ impl Deserialize for i32 {
     fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
     where
         Self: Sized,
-        Bytes: Buf,
     {
         buffer.try_get_i32().map_err(|e| e.into())
     }
@@ -94,7 +91,6 @@ impl Deserialize for i64 {
     fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
     where
         Self: Sized,
-        Bytes: Buf,
     {
         buffer.try_get_i64().map_err(|e| e.into())
     }
@@ -120,7 +116,6 @@ impl Deserialize for Byte {
     fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
     where
         Self: Sized,
-        Bytes: Buf,
     {
         buffer.try_get_u8().map_err(|e| e.into())
     }
@@ -147,7 +142,6 @@ impl Deserialize for Byte4 {
     fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
     where
         Self: Sized,
-        Bytes: Buf,
     {
         let mut t = [0_u8; 4];
         buffer.try_copy_to_slice(&mut t)?;
@@ -180,7 +174,6 @@ impl Deserialize for String {
     fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
     where
         Self: Sized,
-        Bytes: Buf,
     {
         let mut v = Vec::new();
         let mut c: u8 = buffer.try_get_u8()?;
@@ -371,7 +364,6 @@ where
     fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
     where
         Self: Sized,
-        Bytes: Buf,
     {
         let mut v = Self::new();
         let len = buffer.try_get_i16()?;
@@ -389,7 +381,6 @@ where
     fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
     where
         Self: Sized,
-        Bytes: Buf,
     {
         let mut v = Self::new();
         let len = buffer.try_get_i32()?;
@@ -407,7 +398,6 @@ where
     fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
     where
         Self: Sized,
-        Bytes: Buf,
     {
         let mut v = Self::new();
         loop {
@@ -539,7 +529,6 @@ impl Deserialize for Bytes {
     fn deserialize(buffer: &mut Bytes) -> anyhow::Result<Self>
     where
         Self: Sized,
-        Bytes: Buf,
     {
         let len = buffer.try_get_i32()?;
         let mut v = vec![0_u8; len as usize];
