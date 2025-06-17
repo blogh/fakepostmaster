@@ -534,7 +534,8 @@ pub struct CopyFail {
 #[message_body(kind = 'H')]
 pub struct CopyInResponse {
     pub copy_format: i8,
-    pub column_format_code: VecWithEncoding<Byte, Length16>,
+    #[serde_libpq(length_encoding = "i16")]
+    pub column_format_code: Bytes,
 }
 
 // CopyOutResponse (B)
@@ -552,7 +553,8 @@ pub struct CopyInResponse {
 #[message_body(kind = 'H')]
 pub struct CopyOutResponse {
     pub copy_format: i8,
-    pub column_format_code: VecWithEncoding<Byte, Length16>,
+    #[serde_libpq(length_encoding = "i16")]
+    pub column_format_code: Bytes,
 }
 
 // CopyBothResponse (B)
@@ -570,7 +572,8 @@ pub struct CopyOutResponse {
 #[message_body(kind = 'W')]
 pub struct CopyBothResponse {
     pub copy_format: i8,
-    pub format_code: VecWithEncoding<Byte, Length16>,
+    #[serde_libpq(length_encoding = "i16")]
+    pub format_code: Bytes,
 }
 
 // DataRow (B)
@@ -586,9 +589,15 @@ pub struct CopyBothResponse {
 #[message_body(kind = 'D')]
 pub struct DataRow {
     // The serialization will create a length field
-    pub columns: VecWithEncoding<Option<Bytes>, Length16>,
+    #[serde_libpq(length_encoding = "i16")]
+    pub columns: Vec<ColData>,
 }
 
+#[derive(Debug, PartialEq, SerdeLibpqData)]
+pub struct ColData {
+    #[serde_libpq(length_encoding = "i32")]
+    pub data: Option<Bytes>,
+}
 // Describe (F)
 // * Byte1('D') Identifies the message as a Describe command.
 // * Int32 Length of message contents in bytes, including self.
@@ -616,7 +625,8 @@ pub struct DataRow {
 #[message_body(kind = 'E')]
 pub struct ErrorResponse {
     // The serialization will create a length field
-    pub messages: VecWithEncoding<ErrorMessage, NullLength>,
+    #[serde_libpq(length_encoding = "null")]
+    pub messages: Vec<ErrorMessage>,
 }
 
 impl ErrorResponse {
@@ -719,7 +729,8 @@ pub struct ErrorMessage {
 #[derive(Debug, PartialEq, SerdeLibpqData, MessageBody, TryFromRawMessage)]
 #[message_body(kind = 'N')]
 pub struct NoticeResponse {
-    pub messages: VecWithEncoding<ErrorMessage, NullLength>,
+    #[serde_libpq(length_encoding = "null")]
+    pub messages: Vec<ErrorMessage>,
 }
 
 // NotificationResponse (B)
@@ -885,7 +896,8 @@ impl From<&TransactionIndicator> for Byte {
 #[message_body(kind = 'T')]
 pub struct RowDescription {
     // The serialization will create a length field
-    pub columns: VecWithEncoding<QColumnDescription, Length16>,
+    #[serde_libpq(length_encoding = "i16")]
+    pub columns: Vec<QColumnDescription>,
 }
 
 impl RowDescription {
@@ -1021,7 +1033,8 @@ impl PgType {
 #[derive(Debug, Clone, PartialEq, SerdeLibpqData)]
 pub struct StartupMessage {
     pub protocol_version: ProtocolVersion,
-    pub parameters: VecWithEncoding<ParameterStatus, NullLength>,
+    #[serde_libpq(length_encoding = "null")]
+    pub parameters: Vec<ParameterStatus>,
 }
 
 impl StartupMessage {
@@ -1129,10 +1142,11 @@ mod test {
         // 0x0050:                      4400 0000 0a00 0100  ........D.......
         // 0x0060:  0000 00
 
-        let mut m = DataRow {
-            columns: VecWithEncoding::<Option<Bytes>, Length16>::new(),
+        let m = DataRow {
+            columns: Vec::from(vec![ColData {
+                data: Some(Bytes::new()),
+            }]),
         };
-        m.columns.push(Some(Bytes::new()));
         let h = MessageHeader {
             message_type: 'D' as u8,
             length: 4 + m.byte_size(),
@@ -1151,16 +1165,38 @@ mod test {
     }
 
     #[test]
+    fn datarow_nulldata_deserialize() -> anyhow::Result<()> {
+        let m = DataRow {
+            columns: Vec::from(vec![ColData { data: None }]),
+        };
+        let h = MessageHeader {
+            message_type: 'D' as u8,
+            length: 4 + m.byte_size(),
+        };
+
+        let mut buffer = Bytes::from(vec![
+            0x44, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0xFF,
+        ]);
+        let h2 = MessageHeader::deserialize(&mut buffer)?;
+        let m2 = DataRow::deserialize(&mut buffer)?;
+
+        assert_eq!(m, m2);
+        assert_eq!(h, h2);
+
+        Ok(())
+    }
+
+    #[test]
     fn datarow_onebytecol_deserialize() -> anyhow::Result<()> {
         // Empty Row Data message
         // 0x0050:                      4400 0000 0a00 0100  ........D.......
         // 0x0060:  0000 00
 
-        //FIXME: I should use ColumnData
-        let mut m = DataRow {
-            columns: VecWithEncoding::<Option<Bytes>, Length16>::new(),
+        let m = DataRow {
+            columns: Vec::from(vec![ColData {
+                data: Some(Bytes::from_static(&['1' as u8])),
+            }]),
         };
-        m.columns.push(Some(Bytes::from(vec!['1' as u8])));
         let h = MessageHeader {
             message_type: 'D' as u8,
             length: 4 + m.byte_size(),

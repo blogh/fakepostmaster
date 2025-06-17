@@ -1,6 +1,4 @@
 use anyhow::anyhow;
-use libpq_serde_types::libpq_types::NullLength;
-use libpq_serde_types::libpq_types::VecWithEncoding;
 use std::collections::HashMap;
 use std::net::TcpStream;
 use tracing::*;
@@ -223,7 +221,7 @@ impl ClientMachine {
         let startup_message =
             MessageBuilder::new_frontend_message().startup_message(StartupMessage {
                 protocol_version: ProtocolVersion { major: 3, minor: 0 },
-                parameters: VecWithEncoding::<ParameterStatus, NullLength>::from(vec![
+                parameters: vec![
                     ParameterStatus {
                         name: String::from("user"),
                         value: user.clone(),
@@ -244,7 +242,7 @@ impl ClientMachine {
                         name: String::from("client_encoding"),
                         value: String::from("utf8"),
                     },
-                ]),
+                ],
             });
         let client_parameters = HashMap::<String, String>::try_from(startup_message.main_as_ref())?;
         startup_message.into_raw_message()?.send(&mut tcp_stream)?;
@@ -378,8 +376,8 @@ impl ClientMachine {
                 let message = DataRow::try_from(&mut raw_message)?;
                 debug!("DETAIL: {message:?}");
                 let mut datarow = Vec::new();
-                for (idx, data) in message.columns.into_iter().enumerate() {
-                    let decoded_data = match data {
+                for (idx, coldata) in message.columns.into_iter().enumerate() {
+                    let decoded_data = match coldata.data {
                         None => None,
                         Some(data) => Some(decode_from_text(&data, &qdata.header[idx].pg_type)?),
                     };
@@ -970,7 +968,7 @@ impl ClientMachine {
 }
 
 //FIXME: Find a better house for this (probably std::fmt::Display on the message?)
-fn format_err_msg(messages: &VecWithEncoding<ErrorMessage, NullLength>) -> String {
+fn format_err_msg(messages: &Vec<ErrorMessage>) -> String {
     let mut mtype: Option<String> = None;
     let mut code: Option<String> = None;
     let mut txt: Option<String> = None;

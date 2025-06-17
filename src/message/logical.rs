@@ -2,10 +2,7 @@ use anyhow::anyhow;
 use bytes::Bytes;
 
 use libpq_serde_macros::{MessageBody, SerdeLibpqData};
-use libpq_serde_types::{
-    Deserialize,
-    libpq_types::{Byte, Length16, Length32, VecWithEncoding},
-};
+use libpq_serde_types::{Deserialize, libpq_types::Byte};
 
 // This file contains all the messages from the logical replication. The are packed inside a
 // CopyData message usually in the CopyBoth context (an briefly on CopyIn CopyOut when we stop
@@ -137,7 +134,8 @@ pub struct Message {
     pub is_txn: i8,
     pub lsn: i64,
     pub prefix: String,
-    pub message: VecWithEncoding<Byte, Length32>,
+    #[serde_libpq(length_encoding = "i32")]
+    pub message: Bytes,
 }
 
 // Commit
@@ -193,7 +191,8 @@ pub struct Relation {
     pub namespace: String,
     pub relname: String,
     pub replica_identity: i8,
-    pub columns: VecWithEncoding<RColumnDescription, Length16>,
+    #[serde_libpq(length_encoding = "i32")]
+    pub columns: Vec<RColumnDescription>,
 }
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
@@ -299,7 +298,8 @@ pub struct Delete {
 pub struct Truncate {
     //NOTE: Only for streamed transaction
     //pub txn_id: i32,
-    pub relations: VecWithEncoding<i32, Length32>,
+    #[serde_libpq(length_encoding = "i32")]
+    pub relations: Vec<i32>,
 }
 
 #[derive(Debug, PartialEq, SerdeLibpqData)]
@@ -427,7 +427,8 @@ pub struct StreamAbort {
 #[derive(Debug, PartialEq, SerdeLibpqData)]
 pub struct TupleData {
     pub flag: Byte,
-    pub data: VecWithEncoding<ColumnData, Length16>,
+    #[serde_libpq(length_encoding = "i16")]
+    pub data: Vec<ColumnData>,
 }
 
 #[derive(Debug, PartialEq)]
